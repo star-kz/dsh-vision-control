@@ -1,0 +1,22 @@
+DSH-Vision-Control (dsh-vision-control)
+Copyright © 2026 star-kz
+
+This project is a merged fork containing code from two upstream projects:
+
+1. Desktop-control layer (index.js, client.js, backend/, internal/, browser/)
+   from dsh-computer-use v1.40.3
+   Copyright © 2026 LJL454
+   https://github.com/LJL454/dsh-computer-use
+   Licensed under the MIT License (see LICENSE-MIT).
+
+2. Real-time perception layer (see/)
+   from dsh-see-now v0.0.3
+   Copyright © 2026 SAOS-3624
+   https://github.com/SAOS-3624/dsh-see-now
+   Licensed under the PolyForm Noncommercial License 1.0.0 (see LICENSE),
+   used with the author's authorization. The floating window, voice
+   narration and background wake features were removed in this fork.
+
+As a whole, this repository is distributed under the PolyForm
+Noncommercial License 1.0.0 (see LICENSE). The MIT-licensed portions
+remain available under their original terms (see LICENSE-MIT).

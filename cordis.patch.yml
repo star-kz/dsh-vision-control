@@ -1,0 +1,50 @@
+# Insert this plugin as its own row in the desktop profile's loader tree.
+#
+# The row name must match package.json's "name"; the package itself has to be a
+# dependency of the profile (and listed in its dsh.profile.bundles) for this file
+# to be read at all.
+#
+# 本 bundle 承载核心的三件事（原先分属三个插件包，现已合并到 @k-launcher/dsh-vision-control）：
+#   * 电脑操作 —— `computer_*` 系列工具，仍由会话开关「电脑操作」控制；
+#   * token-guard —— 把过长的工具返回压成结构化摘要（原 @local/dsh-token-guard），
+#     由下面的 config.tokenGuard 控制；
+#   * app-launch —— 用干净环境启动 GUI 应用（原 @local/dsh-app-launch），
+#     由下面的 config.appLaunch 控制。
+#
+# 本 bundle 同时承载 token-guard（工具输出压缩）与 app-launch（干净环境启动 GUI），
+# 分别由下面的 config.tokenGuard / config.appLaunch 控制。
+- insert:
+    - id: k-vision-control
+      name: '@k-launcher/dsh-vision-control'
+      config:
+        # Computer control stays off until the user flips the 电脑操作 chip, per
+        # Session. Set this to true only on a machine where every Session is
+        # allowed to drive the mouse and keyboard without asking.
+        defaultEnabled: false
+
+        # ── token-guard：超长工具输出压缩 ──
+        tokenGuard:
+          enabled: true
+          # 只压 shell 输出；桌面/图像结果刻意不动
+          tools:
+            - pwsh
+          # 普通成功输出预算：太小会让长日志/文件读取频繁拿到残缺输出
+          normalMaxTokens: 4000
+          # 排障输出预算
+          troubleshootingMaxTokens: 2000
+          # 带图的返回保持原样，避免干扰图像缓存实验
+          skipImageResults: true
+          # 完整输出必须可追溯：优先写 spill，缺失时写本地文件
+          keepFullOutput: true
+          fullOutputDir: ''
+          # 每次压缩追加一行指标，供配对测试读取
+          metrics: true
+          metricsPath: ''
+
+        # ── app-launch：干净环境启动 GUI 应用 ──
+        appLaunch:
+          enabled: true
+          # 等窗口出现多久才回话（毫秒）
+          defaultWaitMs: 6000
+          # 启动后不把应用挂在会话下
+          detach: true
