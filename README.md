@@ -1,5 +1,7 @@
 # DSH-Vision-Control
 
+**中文 | [English](README_EN.md)**
+
 **实时视觉感知 + 精确桌面操控** —— 一个 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) 插件，给 AI 一双眼睛和一双手。
 
 `@k-launcher/dsh-vision-control` · v1.0.0 · Windows · PolyForm Noncommercial 1.0.0
