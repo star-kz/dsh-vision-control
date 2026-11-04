@@ -252,5 +252,3 @@ export function blit(dst, dstW, dstH, x, y, cellW, cellH, src, srcW = cellW) {
   }
 }
 
-/* ---------------------------------------------------------------- 音频条带 */
-

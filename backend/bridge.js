@@ -23,10 +23,11 @@
  *      with the same stale error and the capability never came back. A timed-out
  *      start now tears the process down and resets the state, so the next call
  *      really is a fresh attempt.
- *   3. **The caller is never told an unknown outcome is a failed one.** A timeout
- *      on a request that was already dispatched is tagged `dispatched = true`,
- *      because replaying a click or a paste that may have happened is a different
- *      (and worse) mistake than not replaying one that did not.
+ *   3. **The caller is never told an unknown outcome is a failed one.** A failure
+ *      on a request that was already dispatched — a timeout, or the worker dying
+ *      mid-request — is tagged `dispatched = true`, because replaying a click or
+ *      a paste that may have happened is a different (and worse) mistake than
+ *      not replaying one that did not.
  */
 import { spawn } from 'node:child_process';
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
@@ -463,7 +464,24 @@ export class PowerShellBackend {
   #failOutstanding(error) {
     const queued = this.#queue.splice(0);
     for (const entry of queued) this.#settle(entry, error, undefined);
-    for (const entry of [...this.#pending.values()]) this.#finish(entry, error);
+    for (const entry of [...this.#pending.values()]) {
+      if (entry.written === true) {
+        // Dispatched: the request was already written to the worker, so it may or
+        // may not have acted on the desktop. It gets its own copy tagged
+        // `dispatched = true` (the [UNKNOWN_OUTCOME] hint, same as the TIMEOUT
+        // path): the caller must observe before deciding, never replay blindly.
+        // The shared error keeps `dispatched = false` for the never-written
+        // entries, for whom replay is free.
+        const dispatched = Object.assign(
+          new ComputerUseBackendError(error.message, error.code),
+          error,
+        );
+        dispatched.dispatched = true;
+        this.#finish(entry, dispatched);
+      } else {
+        this.#finish(entry, error);
+      }
+    }
     this.#runningId = null;
   }
 

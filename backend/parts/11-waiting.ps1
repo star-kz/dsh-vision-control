@@ -45,7 +45,7 @@ function Get-WaitConditionSpec([object]$Arg) {
 }
 
 function Get-WaitConditionWeight([object]$Predicate) {
-    # 'light' or 'heavy', for the polling plan (§6.2). A window's existence or a file's state is a
+    # 'light' or 'heavy', for the polling plan (sec. 6.2). A window's existence or a file's state is a
     # cheap check that can be asked often; a control/value/text condition walks a UI Automation
     # tree, and a region condition reads and fingerprints pixels -- those start slower and back off
     # to a lower ceiling. A group inherits the heaviest leg, because the group is only as cheap as
@@ -311,7 +311,7 @@ function Test-ConditionText([object]$Predicate) {
 function Test-FileParseable([string]$path, [object]$item) {
     # Only the formats this backend can actually check are checked. Anything else is reported
     # as "not verifiable" rather than as a pass: a condition that says `true` about a file
-    # nobody read is worse than one that says it cannot tell (方案 §6.2 的"保留证据等级").
+    # nobody read is worse than one that says it cannot tell (the "keep the evidence grade" rule of plan doc sec. 6.2).
     $ext = ''
     try { $ext = [System.IO.Path]::GetExtension($path).ToLowerInvariant() } catch { $ext = '' }
     $size = [int64]$item.Length
@@ -530,8 +530,8 @@ function Test-ConditionGroup([object]$Predicate, [string]$mode) {
 }
 
 function Test-ConditionRegion([object]$Predicate) {
-    # A visual condition over a rectangle of the desktop (§6.2 "自绘界面" row: 目标区域语义变化、
-    # 视觉标识). It is the one completion condition that needs no cooperation from the application
+    # A visual condition over a rectangle of the desktop (sec. 6.2 "owner-drawn UI" row: a semantic change of the target region,
+    # a visual marker). It is the one completion condition that needs no cooperation from the application
     # at all -- it reads pixels.
     #
     # Three modes, each the weakest claim that answers the question:
@@ -700,7 +700,7 @@ function Wait-ForCondition([object]$Arg) {
     $currentPollMs = $pollMs
     while ($true) {
         Assert-NotCancelled 'during a condition wait'
-        # The budget is asked *before* the sample, not after it (§5.7). Sampling first meant a
+        # The budget is asked *before* the sample, not after it (sec. 5.7). Sampling first meant a
         # wait whose budget was already spent still made one observation -- and a satisfying
         # one reported `satisfied: true` for a call that had no time left to have observed it
         # (PS07). Nothing was watched in that case, and the report says so rather than claiming
@@ -755,7 +755,7 @@ function Wait-ForCondition([object]$Arg) {
     $status = 'false'
     if ($null -ne $last) { $status = "$($last.status)" }
     # Nothing was watched at all: the call had no budget left to watch with. That is not the
-    # statement "the condition is false", so it is reported as the third answer (§5.7/PS07).
+    # statement "the condition is false", so it is reported as the third answer (sec. 5.7/PS07).
     $watched = $null -ne $last
     if (-not $watched) { $status = 'unknown' }
     $budgetFrom = "$($spec.timeoutFrom)"

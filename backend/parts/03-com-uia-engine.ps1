@@ -296,7 +296,7 @@ namespace DshUia
         private static IUIAutomation automation;
         private static string lastError = "";
 
-        // §7.4 item 7: measure before releasing. Every short-lived COM object this engine hands
+        // sec. 7.4 item 7: measure before releasing. Every short-lived COM object this engine hands
         // out is counted, and the ones with a clear scope are released where that scope ends.
         // The point of counting first is that the alternative -- calling ReleaseComObject on
         // everything in sight -- can release an element the ref registry is still holding and
@@ -643,7 +643,7 @@ namespace DshUia
 
             while (queue.Count > 0)
             {
-                // §7.4 item 2: the output budget and the traversal budget are separate questions.
+                // sec. 7.4 item 2: the output budget and the traversal budget are separate questions.
                 // `rows.Count >= maxNodes` only counts rows that were *kept*, so a tree of
                 // anonymous nodes -- dropped by skipEmpty, never counted -- used to be walked
                 // with no bound of its own. The visit budget is checked here, before a node is
@@ -682,7 +682,7 @@ namespace DshUia
                     }
                 }
                 // One array per visited node is what a walk of a large window allocates; without
-                // this it stays alive until the client is rebuilt (§7.4 item 7).
+                // this it stays alive until the client is rebuilt (sec. 7.4 item 7).
                 ReleaseTransient(children);
                 if (queue.Count > maxQueue) maxQueue = queue.Count;
             }
@@ -697,7 +697,7 @@ namespace DshUia
 
         /// Whether a control-type argument names exactly one UIA control type.
         ///
-        /// §7.4 item 3: the tool's matching for a control type is a substring test, so only a
+        /// sec. 7.4 item 3: the tool's matching for a control type is a substring test, so only a
         /// *fully named* type (`ControlType.Button`) may be pushed down as a provider filter;
         /// `Button` -- which the substring test matches -- must not be, because an exact
         /// condition would drop rows the caller would otherwise have got.
@@ -775,7 +775,7 @@ namespace DshUia
             IUIAutomationElement root = Root(hwnd, cache);
 
             IUIAutomationCondition condition;
-            // §7.4 item 3: only conditions that are *equivalent* when pushed down go to the
+            // sec. 7.4 item 3: only conditions that are *equivalent* when pushed down go to the
             // provider, so the enumeration itself is smaller. `automationId` is exact by
             // definition. A control type is pushed down only when the caller named one in full
             // (`ControlType.Button`); the tool's matching for a partial name is a substring
@@ -1421,7 +1421,7 @@ namespace DshUia
             return legacy.CurrentDescription ?? "";
         }
 
-        /// B1 (8.txt §5): the text a read can carry, read through the client that read the
+        /// B1 (8.txt sec. 5): the text a read can carry, read through the client that read the
         // tree.
         ///
         /// It lives here rather than in the managed wrapper because of a measured
@@ -1429,7 +1429,7 @@ namespace DshUia
         /// automation ids while the managed client answered 2 anonymous rows (a WinForms
         /// window served through the MSAA bridge). A text target resolved through the
         /// managed API therefore reports `target_required` on a window the caller is
-        /// plainly looking at. §5 asks for both engines; the managed implementation stays
+        /// plainly looking at. sec. 5 asks for both engines; the managed implementation stays
         /// as the fallback for a host where COM is unavailable.
         ///
         /// Everything is live-read: an element resolved through a plain FindAll has no
@@ -1879,6 +1879,95 @@ namespace DshUia
             if (id.Length > 0) label = label + " #" + id;
             return label;
         }
+        /// <summary>
+        /// A dry-run probe (NEW-P1-02 B2): everything Act does up to the point where it
+        /// would touch the element, and nothing beyond it. The same Resolve locates the
+        /// target, the enabled flag and the pattern the action would drive are read off
+        /// the match, and the method returns without invoking, focusing, selecting or
+        /// typing anything -- so the verdict a batch rehearsal reports is the one the
+        /// real step would have produced against this desktop, not an approximation.
+        /// </summary>
+        public static void Probe(long hwnd, string action,
+                                 string wantId, string wantName, string wantType, string wantClass, int index,
+                                 out object[] outMatched, out string outPattern, out bool outEnabled, out bool outOk, out string outError)
+        {
+            outMatched = new object[0];
+            outPattern = "";
+            outEnabled = false;
+            outOk = false;
+            outError = "";
+            try
+            {
+                Init();
+                IUIAutomationElement target = Resolve(hwnd, wantId, wantName, wantType, wantClass, index, out outMatched, out outError);
+                if (target == null) return;
+                outEnabled = Flag(target, UIA_IsEnabledPropertyId, true);
+
+                // The pattern each action drives, mirroring Act, ReadCaret and the text
+                // readers. focus needs none: SetFocus lives on the element itself.
+                int patternId = 0;
+                string patternLabel = "";
+                switch (action)
+                {
+                    case "invoke": patternId = UIA_InvokePatternId; patternLabel = "Invoke"; break;
+                    case "set_value": patternId = UIA_ValuePatternId; patternLabel = "ValuePattern.SetValue"; break;
+                    case "get_value": patternId = UIA_ValuePatternId; patternLabel = "ValuePattern"; break;
+                    case "toggle": patternId = UIA_TogglePatternId; patternLabel = "Toggle"; break;
+                    case "select": patternId = UIA_SelectionItemPatternId; patternLabel = "SelectionItem"; break;
+                    case "expand":
+                    case "collapse": patternId = UIA_ExpandCollapsePatternId; patternLabel = "ExpandCollapse"; break;
+                    case "scroll_into_view": patternId = UIA_ScrollItemPatternId; patternLabel = "ScrollItemPattern.ScrollIntoView (it is not inside a scrollable container)"; break;
+                    case "close":
+                    case "minimize":
+                    case "maximize":
+                    case "restore": patternId = UIA_WindowPatternId; patternLabel = "WindowPattern (close/minimize/maximize/restore)"; break;
+                    case "legacy_action": patternId = UIA_LegacyIAccessiblePatternId; patternLabel = "LegacyIAccessiblePattern.DoDefaultAction"; break;
+                    case "get_text":
+                    case "select_text":
+                    case "click_text":
+                    case "locate_text": patternId = UIA_TextPatternId; patternLabel = "TextPattern"; break;
+                    case "get_caret": patternId = UIA_TextPattern2Id; patternLabel = "TextPattern2"; break;
+                    case "focus": patternId = 0; patternLabel = "element.SetFocus"; break;
+                    default: outError = "unknown UI Automation action '" + action + "'"; return;
+                }
+                outPattern = patternLabel;
+
+                bool reading = action == "get_value" || action == "get_text" || action == "locate_text" || action == "get_caret";
+                if (!reading && !outEnabled)
+                {
+                    Dictionary<string, object> matchedRow = (Dictionary<string, object>)outMatched[0];
+                    outError = "the matched element is disabled (" + Label(matchedRow) + "), so it would ignore the action; nothing was sent";
+                    return;
+                }
+
+                if (patternId != 0)
+                {
+                    object raw;
+                    int hr = target.GetCurrentPattern(patternId, out raw);
+                    if (hr == 0 && raw != null)
+                    {
+                        outOk = true;
+                        return;
+                    }
+                    // get_value keeps Act's MSAA fallback: a value the legacy bridge can
+                    // read is a value the real step would return.
+                    if (action == "get_value" && LegacyText(target).Length > 0)
+                    {
+                        outPattern = patternLabel + " (via LegacyIAccessible)";
+                        outOk = true;
+                        return;
+                    }
+                    outError = "the matched element does not support " + patternLabel;
+                    return;
+                }
+                outOk = true;
+            }
+            catch (Exception error)
+            {
+                outError = error.Message;
+            }
+        }
+
     }
 }
 '@

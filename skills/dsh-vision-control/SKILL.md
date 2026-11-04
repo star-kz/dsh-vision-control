@@ -45,7 +45,19 @@ metadata:
 
 批量动作写进一个 `computer_actions` 调用（最多 50 步，末尾可带截图/UIA 读），省往返。
 
-## 3. computer_watch 详解（余光）
+## 3. 操作循环范式（批与盯梢的纪律）
+
+四条纪律，同一个目标：让每批动作"带着自己的确认上路"——不拍脑袋等，也不往旧页面上点。
+
+**① 批内确认用 `wait_for` 语义条件，不用固定 sleep 猜时间。** 点完要等"结果出现"时，在批里插 `wait_for` 步声明条件，worker 轮询（首次立即查，之后每 `poll_ms`，默认 120ms），条件一成立立刻走下一步——而不是 `wait` 一个事前猜的秒数（猜短了点在旧页面上，猜长了每步白烧时间）。八种条件：`window`（窗口出现/消失）、`control`（控件出现、`enabled:true` 可点）、`value`（控件值变成 `expected`）、`text`（窗口文字里出现 `contains`）、`file`（产物落盘）、`region`（屏幕区域像素 `changed`/`stable`，自绘界面的兜底）、`every`/`any`（组合）。步级 `timeout_ms` 默认 30s、上限 120s；超时默认 `on_timeout:'stop'` 停在原地，回执 `nextStep` 点名停在哪、`waits` 说看到了什么（`condition-timeout` = 没变成真，`condition-unobservable` = 根本没看着，两回事）。固定 `wait` 步只用于纯时长（动画、settle，单步上限 30s）。**预算口径**：批内所有等待——`wait_for` 步和固定 `wait` 步——共用本次调用的一个预算；长等待链显式给 `deadline_ms`，被预算裁断的等待如实报 `timeoutFrom:'deadline'` / `[DEADLINE_EXHAUSTED]`，不会有隐式截断。
+
+**② `computer_watch` 只在预计空闲 >10s 时挂；一批返回后想续看必须重挂。** watch 每次调用**只回一批图**（阻塞到有变化或超时即返回），返回后采集器只留 **60 秒宽限**——60s 内没有新的 watch 调用，采集（ffmpeg）即被 teardown，下次再看要重付冷启动。所以：预计接下来 >10s 不用动手（等加载、等进度条、等消息）才挂；自己马上要连续发动作时别挂——watch 是阻塞调用，挂住期间你一步也动不了。一批图返回后还要继续看，**60s 内立刻再挂一次**（复用温采集，零重启成本）——"挂一次就一直在看"是错觉，它从不持续投递。
+
+**③ 长任务的批里插 `screenshot` 步，留中间证据。** 默认 `evidence:true` 只对整批**首尾**做指纹比对——长批在第 N 步失败时，首尾指纹只说"变了/没变"，看不到失败现场。在每个阶段边界插 `{action:'screenshot'}` 步（只读步，可安全重发），回执把中间帧带回来，出问题时按图定位是哪一步开始偏离。阶段多于两三段的长批，每段末尾一张。
+
+**④ 跨页面跳转/向导翻页/同窗口对话框的批：步间必须声明 `wait_for` 语义网。** 批守卫 `stop_on_window_change`（默认开）只看**前台窗口**变化——网页跳转、向导翻页、同窗口弹出的对话框都不换前台窗口，守卫看不见。这类批在触发跳转的步之后**必须插 `wait_for` 步**确认新页面就位再往下点：有可读控件用 `control`/`value`/`text`，自绘界面用 `region`。否则就是"回执成功、其实点在旧页面"。反过来，动作**预期**会换前台窗口（点"导出"弹出完成框）时，把目标窗口声明进 `expected_transitions` 放行，而不是关掉守卫。
+
+## 4. computer_watch 详解（余光）
 
 ```jsonc
 computer_watch({ action: "watch", seconds: 300 })   // 阻塞到有图或超时；有变化时 15-40s 出一张
@@ -59,7 +71,7 @@ computer_watch({ action: "stop" })                  // 收工
 - **何时用**：等页面加载完、等进度条走完、盯聊天窗口来消息、长时间任务挂余光。静止时几乎不花 token。
 - **读不了小字就升 quality**，别猜糊图。
 
-## 4. 定位与操控要点
+## 5. 定位与操控要点
 
 - **UIA 优先**：`computer_ui({ filter: "保存" })` → `computer_ui_action({ action: "invoke", name: "保存" })`。零截图、不怕遮挡、中文稳。跨调用引用控件用 `ref`（`[s#.#]`，带过期保护）。
 - **click 兜底**：`prefer_a11y:true`（默认）会先尝试 UIA 按压；`clicks:2` 双击、`modifiers:"ctrl"` 组合点击。`from_frame` + 截图内像素坐标，插件自动投影回屏幕。
@@ -68,7 +80,7 @@ computer_watch({ action: "stop" })                  // 收工
 - **滑块/人机验证**：`computer_drag({ from_x, from_y, to_x, to_y })` 或 `path` 走曲线（更像人）。拖拽中被打断用 `computer_stop` 释放按键。
 - **剪贴板**：`computer_clipboard` get/set/clear——读应用内文本的最可靠方式（选中→ctrl+c→读板）。
 
-## 5. 常见配方
+## 6. 常见配方
 
 | 任务 | 配方 |
 |---|---|
@@ -79,19 +91,21 @@ computer_watch({ action: "stop" })                  // 收工
 | 长时间盯梢 | `computer_watch({pace:"dense"})` 挂着，每出图看一眼，安静时不烧钱 |
 | 应用点了没反应 | `app_env_audit` 查注入变量；`computer_windows` 确认窗口是否真开了 |
 
-## 6. 故障速查
+## 7. 故障速查
 
 | 症状 | 处置 |
 |---|---|
+| 失败文本带 `[CODE · retry=X]` 头 | 统一格式：`retry=X` 是重试判据——`never`（重发无意义，按 hint 修正参数/目标）/ `retry`（可直接重发；非幂等调用时 hint 会改口"先观察"，照做）/ `reobserve`（先 `computer_ui` / `computer_screenshot` 观察再决定）。头下面的「下一步：」行动句照做 |
 | `[NOT_AUTHORIZED]` | 让用户点输入框工具栏的电脑图标 |
 | watch 返回缺 ffmpeg / 采集失败 | 装 ffmpeg（[gyan.dev](https://www.gyan.dev/ffmpeg/builds/)）并把 `bin` 加进 PATH，或设 `DSH_FFMPEG_PATH` |
 | `[TARGET_OCCLUDED]` | 目标被别的窗口盖住：先 `computer_windows` 置前，或 click 加 `allow_activate:true` |
 | `[STALE_REF]` | ref 过期，重新 `computer_ui` 读一次再动 |
+| `[HELPER_UNAVAILABLE]` | 两态，看文案区分：**「从未起来」**（启动失败/脚本缺失）= 调用没到达任何 worker、什么都没发生，重发安全（会自动重启后端，冷启动最长约 60s）；连续失败先查安全软件拦截或跑 doctor，别盲重试。**「起来后死掉」**（服务中途退出）= 调用可能已派发到 worker：只读调用直接重试；非只读先观察桌面再决定 |
 | UIA 读不到内容（自绘界面） | 放弃 UIA，直接截图读像素 + 坐标点击 |
 | 打字丢字 | `computer_type` 换 `computer_paste` |
 | 操作子代理里不可用 | 设计如此：电脑操作只对主会话开放 |
 
-## 7. 边界
+## 8. 边界
 
 - Windows 桌面专用（屏幕捕获走 ffmpeg ddagrab，操控走 UIA + SendInput）。
 - `computer_watch` 单次阻塞上限 860 秒；超时返回空结果属正常，再挂一次即可。

@@ -332,7 +332,7 @@ function New-TreeDelta($nodes, $entries, [string]$base) {
         # The key the registration just minted, so the two sides of the comparison are
         # built by exactly the same rule. A supplied reading may carry the key itself,
         # which is what makes this function testable on trees that never came from a
-        # window (see Do-Delta).
+        # window.
         $key = ''
         if ("$($node['key'])" -ne '') { $key = "$($node['key'])" }
         elseif ("$($node['ref'])" -ne '') {

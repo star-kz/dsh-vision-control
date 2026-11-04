@@ -206,79 +206,10 @@ function Do-UiActByRef([object]$Arg) {
     return $receipt
 }
 
-function Do-Prune([object]$Arg) {
-    # The optimization pass as a pure function over a supplied tree.
-    #
-    # It exists so the pass can be tested against trees that are actually messy. The
-    # windows on a given desktop may all be tidy -- on the machine this was written on,
-    # every window but a browser was -- and a pass that only ever sees tidy input is a
-    # pass that breaks silently the first time it meets a wall of anonymous panes.
-    $rows = New-Object System.Collections.Generic.List[object]
-    foreach ($node in @($Arg.nodes)) {
-        $rows.Add([ordered]@{
-            depth        = [int]$node.depth
-            name         = [string]$node.name
-            controlType  = [string]$node.controlType
-            automationId = [string]$node.automationId
-            className    = [string]$node.className
-            enabled      = [bool]$node.enabled
-            offscreen    = [bool]$node.offscreen
-            x            = [int]$node.x
-            y            = [int]$node.y
-            width        = [int]$node.width
-            height       = [int]$node.height
-            patterns     = @($node.patterns)
-        })
-    }
-    $maxNodes = 250
-    if ($null -ne $Arg.maxNodes) { $maxNodes = [Math]::Max(1, [int]$Arg.maxNodes) }
-    $optimized = Optimize-UiRows $rows $maxNodes
-    return [ordered]@{ nodes = @($optimized.nodes); pruned = [int]$optimized.pruned; input = $rows.Count }
-}
-
-function Do-Delta([object]$Arg) {
-    # The tree comparison as a pure function over two supplied readings, for the same
-    # reason `prune` is one: in practice a delta only ever compared tidy trees that had
-    # not changed, and the fields it forgot to compare -- enabled, offscreen, patterns --
-    # are exactly the ones a caller acts on. Two readings written by hand are how that
-    # gets tested without needing a window that changes a button's enabled state on cue.
-    $nodes = New-Object System.Collections.Generic.List[object]
-    foreach ($node in @($Arg.nodes)) {
-        $nodes.Add([ordered]@{
-            key          = "$($node.key)"
-            ref          = "$($node.ref)"
-            name         = [string]$node.name
-            controlType  = [string]$node.controlType
-            className    = [string]$node.className
-            enabled      = [bool]$node.enabled
-            offscreen    = [bool]$node.offscreen
-            patterns     = @($node.patterns)
-            x            = [int]$node.x
-            y            = [int]$node.y
-            width        = [int]$node.width
-            height       = [int]$node.height
-        })
-    }
-    $entries = New-Object System.Collections.Generic.List[object]
-    foreach ($entry in @($Arg.entries)) {
-        $entries.Add([ordered]@{
-            key         = "$($entry.key)"
-            snapshot    = "$($entry.snapshot)"
-            name        = [string]$entry.name
-            controlType = [string]$entry.controlType
-            className   = [string]$entry.className
-            enabled     = [bool]$entry.enabled
-            offscreen   = [bool]$entry.offscreen
-            patterns    = @($entry.patterns)
-            x           = [int]$entry.x
-            y           = [int]$entry.y
-            width       = [int]$entry.width
-            height      = [int]$entry.height
-        })
-    }
-    $result = New-TreeDelta $nodes $entries "$($Arg.base)"
-    return [ordered]@{ counts = $result.counts; nodes = @($result.nodes) }
-}
+# Cut-list item CUT-2: the `prune` and `delta` commands are gone. They exposed the tree
+# optimizer and the tree comparison as pure functions over caller-supplied data, and
+# nothing calls them -- the live read path (uitree with `since`/`prune` arguments)
+# runs Optimize-UiRows and New-TreeDelta directly.
 
 function ConvertTo-FrameRecord([object]$spec) {
     # A frame spec (from JSON) -> the internal FrameRecord shape. Only the fields a
@@ -465,7 +396,6 @@ $handler = @{
     'batch'      = { param($a) Do-Batch $a }
     'cursor'     = { param($a) Do-Cursor }
     'click'      = { param($a) Do-Click $a }
-    'wait'       = { param($a) Do-Wait $a }
     'wait_for'   = { param($a) Wait-ForCondition $a }
     'drag'       = { param($a) Do-Drag $a }
     'scroll'     = { param($a) Do-Scroll $a }
@@ -478,13 +408,13 @@ $handler = @{
     'digest'     = { param($a) Do-Digest $a }
     'windows'    = { param($a) Do-Windows $a }
     'focus'      = { param($a) Do-Focus $a }
-    'uireset'    = { param($a) [DshUia.Engine]::Reset(); return [ordered]@{ reset = $true } }
     'uitree'     = { param($a) Reset-WalkCounters; Do-UiTree $a }
     'uiact'      = { param($a) Do-UiActByRef $a }
     'health'     = { param($a) Do-Health }
     'pacing'     = { param($a) Do-Pacing $a }
-    'prune'      = { param($a) Do-Prune $a }
-    'delta'      = { param($a) Do-Delta $a }
+    # Cut-list item CUT-2: `wait` / `prune` / `delta` / `uireset` had no caller left -- the
+    # batch's own wait step and the uitree `since`/`prune` arguments carry those
+    # semantics -- so the commands were removed. `frameproject` and `digest` stay.
     'frameproject' = { param($a) Do-FrameProject $a }
     'frameattach' = { param($a) Do-FrameAttach $a }
     'shutdown'   = { param($a) [ordered]@{ bye = $true } }
@@ -511,7 +441,7 @@ try {
     }
 } catch { $script:BuildId = '' }
 
-# The build identity has to cover the code that actually runs (§13.5). The independent release
+# The build identity has to cover the code that actually runs (sec. 13.5). The independent release
 # path is a second script the host executes when this worker is force-killed, so its hash is
 # published here too and verified by the host the same way: a release script from another install
 # would be a release that presses keys this build never recorded.
@@ -538,7 +468,7 @@ $script:Capabilities = @(
     'batch.expected-transitions',
     'observe.epoch'            # a wait boundary invalidates a frame as a final result
     ,'text.observe'            # a read can carry the focused/selected/document text, on one shared budget
-    # Added by the 9.txt work. The host *requires* these (§13.7): a half-applied rollback -- a new
+    # Added by the 9.txt work. The host *requires* these (sec. 13.7): a half-applied rollback -- a new
     # host talking to the 1.39.1 worker -- would otherwise be accepted, because the file on disk
     # still matches the process that read it, and the two halves would silently disagree about the
     # reply shape instead of saying so.
@@ -547,6 +477,8 @@ $script:Capabilities = @(
     ,'input.partial'           # a partially delivered input is its own outcome, never a success
     ,'deadline.enforced'       # a spent budget stops the call before it starts another step
     ,'release.independent'     # held input is mirrored, so a killed worker can still be released
+    ,'batch.dryrun'            # NEW-P1-02 B2: a batch can be rehearsed (dryRun) -- every check, no dispatch
+    ,'ocr.observe'             # NEW-P1-03: the ui observation can carry unverified OCR text (lazy WinRT, never a frame)
 )
 
 Write-Line @{ ready = $true; info = @{ dpi = $dpiMode; dpiActual = $dpiActual; screens = @(Get-ScreenList); virtual = Get-VirtualBounds; pid = $PID; version = $PSVersionTable.PSVersion.ToString(); generation = $script:BootGen; protocol = 2; frameProtocol = $script:FrameProtocol; build = $script:BuildId; releaseBuild = $script:ReleaseBuildId; capabilities = @($script:Capabilities); actions = @($STEP_ACTIONS); uiaActions = @($UIA_STEP_ACTIONS); cancelFile = $script:CancelFile; pacing = (Get-PacingConfig) } }

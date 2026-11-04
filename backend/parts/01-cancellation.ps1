@@ -25,7 +25,7 @@ if ($null -ne $env:DSH_COMPUTER_USE_CANCEL_FILE -and "$($env:DSH_COMPUTER_USE_CA
 # prevent. The parent additionally checks that a ref came from its own session.
 $script:BootGen = [System.Guid]::NewGuid().ToString('N').Substring(0, 4)
 # How many requests this worker has served. Used to name the files a *derived* capture writes
-# (§5.5): the caller's path plus this worker's identity plus the request makes a name no other
+# (sec. 5.5): the caller's path plus this worker's identity plus the request makes a name no other
 # frame in this process -- or in another one -- can collide with.
 $script:RequestSeq = 0
 
@@ -49,7 +49,7 @@ function Assert-NotCancelled([string]$where) {
     }
 }
 
-# The budget of the call being served, as a script-scope instant (§5.7).
+# The budget of the call being served, as a script-scope instant (sec. 5.7).
 #
 # The deadline has to be visible to the *input* functions, not only to the batch loop that
 # computed it: a step that starts just before the budget runs out would otherwise send its
@@ -87,7 +87,7 @@ function Assert-CanSend([string]$where) {
 }
 
 function Test-InputDelivery([int]$sent, [int]$expected, [string]$what) {
-    # What one SendInput call actually did (§6: 部分输入事件成功可能被当作全部成功).
+    # What one SendInput call actually did (sec. 6: a partial input send can look like a full success).
     #
     # SendInput returns the number of events it *inserted*, so a non-zero count is not "all of
     # them" (Microsoft docs, SendInput): a click whose release was refused, or a typed string

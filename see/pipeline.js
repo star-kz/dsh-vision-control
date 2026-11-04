@@ -22,7 +22,7 @@ import { createTiers, applyStrategy } from './tiers.js';
 import { solve, toRects, splitOneBin } from './pack.js';
 import { composePacked, SEAM } from './sheet.js';
 import { coverInto } from './scale.js';
-import { encodePng } from './png.js';
+import { encodePngAsync } from './png.js';
 
 export const DEFAULTS = Object.freeze({
   width: 800,
@@ -148,6 +148,15 @@ export const DEFAULTS = Object.freeze({
   queueDepth: 1,
   /** 只发一帧就截断。刚开/刚换清晰度时用：让模型马上拿到"现在是什么"，不用等攒满一张。 */
   oneShot: false,
+  /**
+   * 区域订阅（新-P1-01）的原点注册：`null` = 整屏；否则 `{x,y,w,h}`（屏幕绝对坐标系，
+   * 与 envelope.displays 同套），由 runner 从采集源带下来，建管线时定死、运行中不变
+   * （换区域 = 重开采集 = 新建管线，见 runner.js watch 的 srcChanged）。
+   *
+   * 硬条件③「帧注册带原点」在 flush 兑现：sheet.origin 记完整区域（换算公式要 w/h），
+   * 每个帧条目再带一份 {x,y} —— 消费者只拿到 frames[] 也能知道坐标空间，不用回 join。
+   */
+  origin: null,
 });
 
 /**
@@ -200,7 +209,8 @@ export function createPipeline(opts = {}) {
    *
    *     need = REF_SCORE × fps × integralSeconds
    *
-   * REF_SCORE 是「中等强度画面每帧的变化分」（8 是标定出来的中位数，0–255 刻度）。
+   * REF_SCORE 是「中等强度画面每帧的变化分」（取 4，0–255 刻度；标定过程与
+   * 「为什么不取 8」见上方 REF_SCORE 的注释 —— 取 8 时 30 秒素材只出 3 帧，太稀）。
    * 于是一段中等画面要攒 integralSeconds 秒才够一个采样点；画面比它动得快就更快累够，
    * 比它静就永远累不够 —— 这才是"运动多给几帧"，而不是固定 N 秒一帧。
    */
@@ -326,6 +336,10 @@ export function createPipeline(opts = {}) {
      */
     const kept = p.cells.filter((c) => c.bin === 0);
     const used = batch.slice(0, kept.length);
+    // via 贴回格子：`toRects` 走 `...c` 展开会把它带进 rects —— 没有这一步，
+    // sheet.js 的「mark 帧不编号」（`if (r.via === 'mark') continue`）就是死规则，
+    // 图面编号与文字清单互相矛盾。
+    kept.forEach((c, i) => { c.via = used[i].via; });
     if (used.length < batch.length) stats.overflow += 1;
     const rects = toRects(kept, { width, height, gutter: 0 });
     const cells = rects.map((r, i) => {
@@ -336,7 +350,11 @@ export function createPipeline(opts = {}) {
       return { buffer, w: cw, h: ch };
     });
     const img = composePacked({ frames: cells, rects, width, height, burn: 'index' });
-    const png = encodePng(img.buffer, width, height, { level: 3 });
+    // 异步 deflate（level 1：实时档，比 3 快近一倍且体积差别不大）——同步压缩是
+    // 百毫秒级的事件循环冻结，会把宿主的取消/超时计时器一起冻住。
+    // 于是 `sheet.png` 是 Promise<Buffer>，出图顺序由 queueDepth=1 串行语义保证，
+    // 消费者在附件上交前 await（见 apply.mjs admitSheet）。
+    const png = encodePngAsync(img.buffer, width, height, { level: 1 });
     // 占用率按**这张图上真有的格子**算：单箱时与 `p.area / p.bins` 完全等价
     const area = kept.reduce((acc, c) => acc + c.w * c.h, 0);
 
@@ -353,8 +371,12 @@ export function createPipeline(opts = {}) {
       area,
       bins: 1,
       why,
+      // 新-P1-01 硬条件③：区域图的原点随图注册（整屏时为 null，消费者判空即可）
+      origin: o.origin ? { ...o.origin } : null,
       frames: used.map((f, i) => ({
         t: +f.t.toFixed(2), tier: seq[i], level: f.level, via: f.via,
+        // 硬条件③：每一帧自带原点 —— 只拿到 frames[] 的消费者也知道坐标空间
+        ...(o.origin ? { origin: { x: o.origin.x, y: o.origin.y } } : {}),
       })),
       cells: rects.map((r) => ({ px: r.px, py: r.py, pw: r.pw, ph: r.ph, tier: r.t })),
     });

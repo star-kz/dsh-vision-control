@@ -10,7 +10,7 @@
  * 忘了它就会得到一张错行的图，而且是"看起来像图但内容是斜的"那种错。
  */
 
-import { deflateSync } from 'node:zlib';
+import { deflate, deflateSync } from 'node:zlib';
 
 const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -42,14 +42,11 @@ function chunk(type, data) {
 }
 
 /**
- * RGB 原始像素 → PNG 字节。
+ * RGB 原始像素 → 扫描线（每行前置滤波字节 0）+ IHDR。deflate 的同步/异步由调用方选。
  *
  * @param {Buffer|Uint8Array} rgb 长度必须是 width*height*3（rgb24，与 ffmpeg rawvideo 一致）
- * @param {number} width
- * @param {number} height
- * @param {{level?: number}} [opts] level 1–9，默认 6；实时场景用 1 能快一倍且体积差别不大
  */
-export function encodePng(rgb, width, height, { level = 6 } = {}) {
+function prepare(rgb, width, height) {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
     throw new RangeError(`bad size ${width}x${height}`);
   }
@@ -76,13 +73,49 @@ export function encodePng(rgb, width, height, { level = 6 } = {}) {
   ihdr[10] = 0;   // 压缩方法
   ihdr[11] = 0;   // 滤波方法
   ihdr[12] = 0;   // 隔行 0 = 非隔行
+  return { raw, ihdr };
+}
 
+/** 扫描线 + IHDR + IDAT（已压缩）→ PNG 字节。 */
+function wrap(ihdr, idat) {
   return Buffer.concat([
     SIGNATURE,
     chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(raw, { level })),
+    chunk('IDAT', idat),
     chunk('IEND', Buffer.alloc(0)),
   ]);
+}
+
+/**
+ * RGB 原始像素 → PNG 字节（**同步**，离线/批量用）。
+ *
+ * @param {Buffer|Uint8Array} rgb 长度必须是 width*height*3（rgb24，与 ffmpeg rawvideo 一致）
+ * @param {number} width
+ * @param {number} height
+ * @param {{level?: number}} [opts] level 1–9，默认 6；实时场景用 1 能快一倍且体积差别不大
+ */
+export function encodePng(rgb, width, height, { level = 6 } = {}) {
+  const { raw, ihdr } = prepare(rgb, width, height);
+  return wrap(ihdr, deflateSync(raw, { level }));
+}
+
+/**
+ * 异步版：deflate 走 zlib 回调（libuv 线程池），**不堵宿主事件循环**。
+ *
+ * flush 链路每出一张图就要压一次 PNG，同步 deflateSync 是百毫秒级的同步冻结 ——
+ * 冻结期间排队的还有宿主的取消/超时计时器（flush 密集期 = 动作密集期 = 最需要
+ * 取消准时的时刻）。实时链路（pipeline flush）必须用这条。
+ *
+ * @returns {Promise<Buffer>} PNG 字节
+ */
+export function encodePngAsync(rgb, width, height, { level = 1 } = {}) {
+  const { raw, ihdr } = prepare(rgb, width, height);
+  return new Promise((resolve, reject) => {
+    deflate(raw, { level }, (err, idat) => {
+      if (err) { reject(err); return; }
+      resolve(wrap(ihdr, idat));
+    });
+  });
 }
 
 /**

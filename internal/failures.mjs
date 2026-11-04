@@ -35,8 +35,17 @@ export function backendMessage(error) {
     if (error.code === 'NO_WORKER_SCRIPT') {
       return `电脑操作后端脚本缺失：${error.message}`;
     }
-    if (error.code === 'START_TIMEOUT' || error.code === 'SPAWN_FAILED' || error.code === 'WORKER_EXITED') {
+    if (error.code === 'START_TIMEOUT' || error.code === 'SPAWN_FAILED') {
       return `电脑操作后端无法启动：${error.message}${release}`;
+    }
+    // 优-P1-10：WORKER_EXITED 一个 code 盖着两种真相——启动阶段就退出（从未起来，消息里
+    // 带 "did not start"）与服务中退出（起来后死掉，调用可能正攥在它手里）。两态分开说，
+    // FAILURE_RULES 的 HELPER_UNAVAILABLE 两条规则各接其一。
+    if (error.code === 'WORKER_EXITED') {
+      if (/did not start/i.test(error.message)) {
+        return `电脑操作后端无法启动：${error.message}${release}`;
+      }
+      return `电脑操作后端进程退出了（它之前在正常服务，这次调用可能正攥在它手里）：${error.message}${release}`;
     }
     return `${error.message}${release}`;
   }
@@ -96,8 +105,19 @@ export const FAILURE_RULES = [
     ? '后端超时并已被重启。这个动作**不是只读的**：它可能已经发生，也可能没有——**不要直接重发**。先用 computer_ui 或 computer_screenshot 看一眼现在的状态，确认没有生效再重试。'
     : '后端超时并已被重启。这个调用是只读的，直接重试即可。') },
   { code: 'CANCELLED', retry: 'never', test: /\[CANCELED\]|had already been dispatched|cancelled before it was dispatched/i, hint: '这次调用被取消了（用户关掉了开关、点了停止，或会话被中断）。取消发生在哪一步并不确定：已经发出的动作可能已经生效。先观察屏幕确认状态，再决定要不要继续——不要因为"被取消"就认为什么都没发生。' },
-  { code: 'UNKNOWN_OUTCOME', retry: 'reobserve', test: /^\[UNKNOWN_OUTCOME\]/, hint: '这一步是否已经作用到桌面上，无法从失败本身判断。先观察（computer_ui / computer_screenshot），再决定重发还是继续。' },
-  { code: 'HELPER_UNAVAILABLE', retry: 'retry', test: /backend|worker/i, hint: '后端进程不可用，重试会自动重启它。' },
+  // 优-P1-11 母案补漏：worker 直发的 [DEADLINE_EXHAUSTED] / [PARTIAL_INPUT] 原本没有规则，
+  // decorateFailure 会把它们原样放行——没有 retry 判据头，也没有「下一步：」。
+  { code: 'DEADLINE_EXHAUSTED', retry: 'reobserve', test: /\[DEADLINE_EXHAUSTED\]/, hint: '这次调用的预算用完了：已经跑完的步骤确实生效了，没开始的一步都没动。先观察（computer_screenshot / computer_ui）确认桌面状态，再决定从哪一步继续；这一串本来就需要更长时间的话，给下一次调用更大的 deadline_ms。' },
+  { code: 'PARTIAL_INPUT', retry: 'reobserve', test: /\[PARTIAL_INPUT\]/, hint: '输入只送达了一部分——已发出的那部分已经在应用里了。不要原样重发这一步（会把已送达的部分重复一遍）；先观察（computer_screenshot / computer_ui），按桌面上的真实状态决定。' },
+  { code: 'UNKNOWN_OUTCOME', retry: 'reobserve', test: /^\[UNKNOWN_OUTCOME(?: · retry=\w+)?\]/, hint: '这一步是否已经作用到桌面上，无法从失败本身判断。先观察（computer_ui / computer_screenshot），再决定重发还是继续。' },
+  // 优-P1-10：HELPER_UNAVAILABLE 幂等两态化。「从未起来」——调用没到达任何 worker，
+  // 什么都没发生，重发永远安全；「起来后死掉」——它之前在服务，调用可能正攥在它手里，
+  // 幂等性按调用分叉（与 TIMEOUT 的幂等分叉同一模式）。两条共享同一个 code，
+  // 靠 backendMessage 的两态文案与各自的 hint 区分。
+  { code: 'HELPER_UNAVAILABLE', retry: 'retry', test: /could not be started|did not start|could not spawn|无法启动|脚本缺失|worker script not found/i, hint: '后端进程从未起来——这次调用没有到达任何 worker，什么都没有发生，重发是安全的（会自动重启后端，冷启动最长约 60 秒）。若连续失败，先查安全软件拦截或跑 doctor，不要一直盲重试。' },
+  { code: 'HELPER_UNAVAILABLE', retry: 'retry', test: /backend|worker/i, hint: (context) => (context.idempotent === false
+    ? '后端进程之前在服务、中途退出了（会被自动重启）。这次调用不是只读的：若它当时已派发到 worker 手上，结果未知——先观察（computer_ui / computer_screenshot）确认桌面状态，再决定要不要重发。'
+    : '后端进程之前在服务、中途退出了（会被自动重启）。这次调用是只读的、或从未派发出去，直接重试即可。') },
 ];
 
 /**
@@ -160,7 +180,9 @@ export const UIA_ACTION_LIST = [
  * this list is treated as non-idempotent, because being wrong in that direction costs
  * one observation, and being wrong in the other direction duplicates a side effect.
  */
-export const IDEMPOTENT_COMMANDS = new Set(['ping', 'health', 'screenshot', 'windows', 'cursor', 'digest', 'uitree', 'release', 'wait', 'frameproject', 'frameattach']);
+// 削-2：独立的 `wait` 命令已从 worker 分发表移除（批内 wait 步骤承载同一语义），
+// 不再列在这里。`prune` / `delta` / `uireset` 三个被删命令从未进过这张表。
+export const IDEMPOTENT_COMMANDS = new Set(['ping', 'health', 'screenshot', 'windows', 'cursor', 'digest', 'uitree', 'release', 'frameproject', 'frameattach']);
 
 /**
  * Classify a call for the retry guidance a failure carries.
@@ -182,17 +204,22 @@ export function isIdempotentCall(cmd, args) {
 }
 
 /**
- * Prefix a failure with its stable code and the next step that helps.
+ * Prefix a failure with its stable code, the retry verdict, and the next step that helps
+ * （优-P1-11：所有失败文本统一 `[CODE · retry=X]` 头，机器可 grep、token-guard 可识别；
+ * worker 直发的裸 `[CODE]` 字面量也会在这里补上 retry 判据与「下一步：」）。
  * @param message - the raw failure text.
  * @param context - `{ idempotent }`, so a hint can depend on whether repeating the call
  *   is safe.
- * @returns `[CODE] message` plus a hint line when one is known.
+ * @returns `[CODE · retry=X] message` plus a hint line when one is known.
  */
 export function decorateFailure(message, context = {}) {
+  // 幂等：已经带着新格式头的文本原样放行（批错误等二次经过这里的场景），否则同一文本
+  // 每经过一次就多叠一层头。worker 的裸 `[CODE]` 形式不匹配这个守卫，仍会被正常装饰。
+  if (/^\[[A-Z][A-Z0-9_]+ · retry=\w+\] /.test(message)) return message;
   for (const rule of FAILURE_RULES) {
     if (!rule.test.test(message)) continue;
     const hint = typeof rule.hint === 'function' ? rule.hint(context) : rule.hint;
-    const head = `[${rule.code}] ${message}`;
+    const head = `[${rule.code} · retry=${rule.retry}] ${message}`;
     return hint === undefined ? head : `${head}\n下一步：${hint}`;
   }
   return message;
@@ -224,5 +251,8 @@ export function withOutcomeNote(message, error, cmd, args) {
   // exist) is not an unknown outcome, and telling the caller it might have reached the
   // desktop sends it looking for something that never happened.
   if (/action_sent=false/.test(message)) return message;
-  return `[UNKNOWN_OUTCOME] ${cmd} had already been sent to the backend when this failed, so it may or may not have reached the desktop. ${message}`;
+  // 统一头（优-P1-11）：与 decorateFailure 同一格式。整合注意：index.js 的
+  // metrics.unknownOutcomes 按字面量 '[UNKNOWN_OUTCOME]' 计数，须改配
+  // /\[UNKNOWN_OUTCOME(?: · retry=\w+)?\]/（见 dev-failures 报告的整合规格段）。
+  return `[UNKNOWN_OUTCOME · retry=reobserve] ${cmd} had already been sent to the backend when this failed, so it may or may not have reached the desktop. ${message}`;
 }

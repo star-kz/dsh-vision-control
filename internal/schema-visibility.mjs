@@ -64,7 +64,7 @@ export const HIDEABLE_TOOL_NAMES = [
   'computer_screenshot', 'computer_actions', 'computer_click', 'computer_drag',
   'computer_scroll', 'computer_type', 'computer_key', 'computer_windows', 'computer_ui',
   'computer_ui_action', 'computer_clipboard', 'computer_paste', 'computer_launch',
-  'computer_stop',
+  'computer_stop', 'computer_watch',
   'browser_state', 'browser_actions',
 ];
 

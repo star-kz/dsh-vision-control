@@ -22,6 +22,11 @@
 | 🛑 **Safety brake** | A chip in the composer toolbar revokes the grant in one click; `computer_stop` releases stuck input and can disable the capability |
 | 🚀 **Clean launch** | `app_launch` starts GUI apps stripped of Electron/Node environment pollution |
 | 📦 **Output compression** | token-guard compacts oversized shell output into summaries, originals saved to disk |
+| 🎯 **Region watch** | `computer_watch` accepts `region` to watch just one screen area — smaller frames, fewer tokens |
+| #️⃣ **Frame digest** | `computer_digest` hashes a region; no change, no wake — polling without image cost |
+| 🧪 **Dry-run rehearsal** | `computer_actions` with `dry_run:true` rehearses faithfully without dispatching input |
+| 🔤 **OCR observation** | Watch can attach Windows OCR text — read screens without guessing glyphs |
+| 📜 **Action audit** | Operations can append to a redacted JSONL audit log (off by default) |
 
 ## Installation
 
@@ -81,6 +86,8 @@ The AI picks the right "eye" and "hand" itself:
 - `quality`: `low` (800×450, ≈218 tokens/frame) → `standard` → `high` (file names readable) → `ultra` (near-native). **If you can't read it, step up.**
 - `pace`: `calm` (thrifty) / `normal` (default) / `dense` (responsive, recommended while operating)
 - `minFrames`: don't return until N frames have accumulated (raise it on idle screens to save tokens)
+- `region`: watch only `{x, y, w, h}` (new in 1.1); switching source or region reopens capture
+- `ocr`: attach Windows OCR text observation (new in 1.1, gated by the worker capability `ocr.observe`)
 
 ## How It Works
 
@@ -107,18 +114,34 @@ computer_watch returns the stitched image as an attachment
 
 ```
 ├── index.js            Host entry: tool registration, grant gate, worker management
-├── client.js           Browser side: composer computer-icon chip (icon + status dot)
+├── client.js           Browser side: composer computer-icon chip (icon only + status dot)
 ├── cordis.patch.yml    Plugin row definition + tokenGuard/appLaunch config
-├── backend/            PowerShell execution backend (worker.ps1)
-├── internal/           Tool contracts, worker protocol, degraded-mode reports
+├── backend/            PowerShell execution backend (worker.ps1 + parts/ sources)
+├── internal/           Tool contracts, worker protocol, audit, lease, degraded-mode reports
 ├── browser/            Browser channel (browser_state / browser_actions)
 ├── see/                Real-time perception (capture → keep → pack → stitch → register)
+├── tools/              Build & gate scripts (concat-worker.mjs, check-encoding.mjs)
+├── tests/              node:test suites (85 cases)
+├── docs/               Worker protocol and other docs
 └── skills/             AI usage-tutorial skill (dsh-vision-control)
 ```
 
 ## Measured Numbers
 
 Capture first frame ~370ms (ddagrab) / 0.28 cores; cold-start first image ≤3s; blocking calls always return within 860s (ahead of the host's 900s tool timeout).
+
+## Changelog
+
+### v1.1.0 (2026-11-04)
+
+- **New**: `computer_digest` region frame-digest tool; `computer_watch` gains `region` subscription and OCR text observation; `computer_actions` gains `dry_run` faithful rehearsal (zero input dispatch, three-way verdict receipts); redacted JSONL action audit (off by default).
+- **Improved**: watch `pace` tiers actually wired; invalid regions are now rejected instead of silently returning stale frames; drag gains dwell, click supports hold; per-cell coordinate mapping annotated; chip state machine refined (observing/ready/busy/watching/stopping — icon only + status dot).
+- **Fixed**: inherited upstream bug where batch drag never forwarded `fromLast/continueFrom`; rehearsal now matches real-run semantics (modifier chords, clipboard op enum, continuation handles).
+- **Internal**: index.js split into tools/ modules; worker.ps1 now built from parts/ sources (concat-worker.mjs); 85 node:test cases; pure-ASCII ps1 discipline with a gate script.
+
+### v1.0.0 (2026-11-03)
+
+First public release: real-time watch + precise control in one plugin, forked from dsh-see-now and dsh-computer-use and heavily rewritten.
 
 ## License
 

@@ -1,4 +1,4 @@
-# The independent release path (9.txt §6 item 4).
+# The independent release path (9.txt sec. 6 item 4).
 #
 # The worker unwinds whatever it still believes is held in a `finally` -- and a killed process
 # never reaches its `finally`. So when the host has to force a worker away while it is holding a

@@ -1,0 +1,81 @@
+{
+  "generatedAt": "2026-11-04T11:14:27.286Z",
+  "generator": "tools/concat-worker.mjs",
+  "worker": {
+    "path": "backend/worker.ps1",
+    "bytes": 732890,
+    "sha256": "02806d8d7fb13f7aeb2dec5e6714af566c1fd40eb73e23d918961ebfbc133707"
+  },
+  "parts": [
+    {
+      "file": "backend/parts/00-preamble.ps1",
+      "bytes": 1442,
+      "sha256": "74948c090a36977111cf75ec1282fd74d71e6afa14604ba494385afc2ad0950d"
+    },
+    {
+      "file": "backend/parts/01-cancellation.ps1",
+      "bytes": 7490,
+      "sha256": "2c8d8af39c88c3ff2b6ac0f97988d724b5cf4024011f5eb962dea82d0b31f3c0"
+    },
+    {
+      "file": "backend/parts/02-native-code.ps1",
+      "bytes": 22523,
+      "sha256": "53c48499373d9cc47fce4bc465eb4ebfdc83b5a630c2d6146ddfc48e51c404d8"
+    },
+    {
+      "file": "backend/parts/03-com-uia-engine.ps1",
+      "bytes": 109994,
+      "sha256": "d89aa256a1f7f7754744e197e2139c1f37bad64f5631b4d2306ee0dee05d706d"
+    },
+    {
+      "file": "backend/parts/04-utilities.ps1",
+      "bytes": 1732,
+      "sha256": "7faa8956fa7941c55af9a10e577ddf642220c2787434008044f1b52ecfd9c91f"
+    },
+    {
+      "file": "backend/parts/05-input-state.ps1",
+      "bytes": 47879,
+      "sha256": "e30b9b0aab7daa3c880466aa65c7e90925dc8fda23d8ff9d3c36a5dd625223a2"
+    },
+    {
+      "file": "backend/parts/06-related-capture.ps1",
+      "bytes": 51323,
+      "sha256": "8b0178d19667e92c22af1ec91cd1198f3b80be3a69a48a8e48ec775ee260bec5"
+    },
+    {
+      "file": "backend/parts/07-frames.ps1",
+      "bytes": 133940,
+      "sha256": "a3b55d087eef002d53b3046645797b15a5f812ebfd6db5a9eeb8a2bc42b4674e"
+    },
+    {
+      "file": "backend/parts/08-element-refs.ps1",
+      "bytes": 6477,
+      "sha256": "8faac7c73983947f5bcd212d459681115e3a8dbb03775b2f1d80e98ffcfb023f"
+    },
+    {
+      "file": "backend/parts/09-what-the-model-reads.ps1",
+      "bytes": 22388,
+      "sha256": "e00e7a3e7b24c0418a2be9ae2adde61160db85df6f52da277686175d557b794e"
+    },
+    {
+      "file": "backend/parts/10-text-observation.ps1",
+      "bytes": 132200,
+      "sha256": "462fef89a78b0c557b7b5bf8bba15f44b9cb8e769fdeba560091638e439b4b08"
+    },
+    {
+      "file": "backend/parts/11-waiting.ps1",
+      "bytes": 45620,
+      "sha256": "6e393fcc19163f590d241dd00c5bb179f277ad1d3e10d21876ea6af1b1cf52dd"
+    },
+    {
+      "file": "backend/parts/12-batching.ps1",
+      "bytes": 119181,
+      "sha256": "96606311e35fdff2ff97a6e06045a1e590121f86f3dea6e141e4272f69f26b42"
+    },
+    {
+      "file": "backend/parts/13-main-loop.ps1",
+      "bytes": 30701,
+      "sha256": "02287d2ae29dbf5a1ca2730440803a56d17680721ad91322f478fcd3bb1be654"
+    }
+  ]
+}

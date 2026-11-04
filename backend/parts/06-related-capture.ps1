@@ -1,8 +1,8 @@
 # ---------------------------------------------------------------------------
-# Related windows and multi-frame capture (8.txt §7)
+# Related windows and multi-frame capture (8.txt sec. 7)
 #
 # A popup or a menu is its own window, and a single frame of the window underneath cannot
-# say that it is there. §7 splits the answer in two: the *relationship* of the windows
+# say that it is there. sec. 7 splits the answer in two: the *relationship* of the windows
 # around the target (who owns whom) and the *real z-order* (what is actually in front) are
 # two different facts, and a frame per window is an explicit request rather than a new
 # default.
@@ -11,7 +11,7 @@ $script:ZOrderCache = $null
 
 function Get-TopLevelZOrder {
     # Every top-level window in the order the shell keeps them: index 0 is the topmost.
-    # This is the real z-order, which §7 keeps apart from the ownership chain -- a popup
+    # This is the real z-order, which sec. 7 keeps apart from the ownership chain -- a popup
     # owned by the target can still sit under it, and reporting the chain as if it were the
     # order would say the opposite.
     $cached = $script:ZOrderCache
@@ -28,7 +28,7 @@ function Get-TopLevelZOrder {
 }
 
 function Get-RelatedWindowList([int64]$hwnd) {
-    # The target and the windows that belong to it, each with the metadata §7 lists.
+    # The target and the windows that belong to it, each with the metadata sec. 7 lists.
     #
     # A window belongs to the target when the ownership chain from it reaches the target:
     # that is what a dialog, a popup menu or a tool window of the same application looks
@@ -84,12 +84,12 @@ function Get-RelatedWindowList([int64]$hwnd) {
 }
 
 function Do-ScreenshotRelated([object]$Arg) {
-    # §7 step two: one frame per related window, each through the ordinary single-window
+    # sec. 7 step two: one frame per related window, each through the ordinary single-window
     # capture path -- so every frame is encoded, registered under its own frame id and
     # reports its own geometry exactly like a single capture does.
     #
     # Default is still one frame: this only runs when the caller asked for `captures:
-    # 'related'`, and the budget (§7) is two frames by default, three at most.
+    # 'related'`, and the budget (sec. 7) is two frames by default, three at most.
     $hwnd = 0
     if ($null -ne $Arg.window) { $hwnd = [int64]$Arg.window }
     if ($hwnd -eq 0) { throw "[BAD_REQUEST] captures: 'related' needs a window: it captures that window and the windows that belong to it" }
@@ -112,7 +112,7 @@ function Do-ScreenshotRelated([object]$Arg) {
         if ([bool]$row['minimized']) {
             # PrintWindow on a minimized window returns the shell's placeholder sliver --
             # a few dozen pixels that look like content. Skipping it and saying so beats
-            # handing back a frame nobody can use (§7).
+            # handing back a frame nobody can use (sec. 7).
             $omitted.Add([ordered]@{ hwnd = [int64]$row['hwnd']; relation = "$($row['relation'])"; reason = 'minimized: a window capture would return the shell placeholder, not the window' })
             continue
         }
@@ -121,7 +121,7 @@ function Do-ScreenshotRelated([object]$Arg) {
             $value = Get-ArgMember $Arg $pair[1]
             if ($null -ne $value) { $single[$pair[0]] = $value }
         }
-        # Each frame needs its own file (§5.5). The caller's `path` names *the* capture; a loop
+        # Each frame needs its own file (sec. 5.5). The caller's `path` names *the* capture; a loop
         # that wrote every related window to it left one file holding whichever frame finished
         # last, while the reply listed several -- and nothing downstream can recover the ones
         # that were overwritten on the way. So every derived frame gets a name of its own: the
@@ -246,7 +246,7 @@ function Do-Screenshot([object]$Arg) {
         # window), and the part that is not the application -- title bar, borders, resize grips --
         # is cropped away. The offset comes from the client origin in screen coordinates against
         # the window's own origin, so it holds for any theme, border width or DPI rather than
-        # being guessed from a fixed title-bar height (方案 §2.2 "明确整个窗口、客户区或显示器").
+        # being guessed from a fixed title-bar height (plan doc sec. 2.2: "state clearly whether it is the whole window, the client area or the display").
         if ("$($Arg.surface)" -eq 'client' -and $null -eq $Arg.region) {
             $clientRect = New-Object DshNative+RECT
             $clientOrigin = New-Object DshNative+POINT
@@ -557,8 +557,8 @@ function Do-Screenshot([object]$Arg) {
         # The spaces this frame spans, each named (see the block above): the surface the
         # pixels came from, the crop of it that this image holds, and the size of the file.
         surfaceKind = $surfaceKind
-        # The coordinate space of every number in this receipt (方案 §3.1 第 6 条: "插件返回实际尺寸、
-        # 实际区域、捕获面、frameId 和坐标单位"). Stated as a field rather than left to prose, because
+        # The coordinate space of every number in this receipt (plan doc sec. 3.1 item 6: "the plugin returns the actual size,
+        # actual region, capture surface, frameId and coordinate unit"). Stated as a field rather than left to prose, because
         # a caller reading `x`/`width` off the receipt needs to know they are physical desktop
         # pixels and not virtualized logical ones.
         units = 'physicalPixels'
@@ -657,17 +657,17 @@ function Wait-ForCursorToSettle([int]$x, [int]$y, [int]$timeoutMs) {
 
 function Do-MouseMoveRelative([int]$dx, [int]$dy) {
     # A move is input: if the call's budget is already spent, the pointer stays where it is and
-    # the caller is told why (§5.7).
+    # the caller is told why (sec. 5.7).
     Assert-CanSend 'before a relative move'
     # A relative move is the only kind that reaches a target whose pointer is locked,
     # hidden or recentred (a canvas, a 3-D viewport, some games): there the absolute
-    # position means nothing and the application consumes the *delta* (8.txt §9).
+    # position means nothing and the application consumes the *delta* (8.txt sec. 9).
     #
     # It goes out as a plain MOUSEEVENTF_MOVE rather than through SetCursorPos, and that is
     # the whole point: SetCursorPos is a warp the application may ignore or undo, while the
     # relative event is the same thing the hardware sends.
     if ($dx -lt -32767 -or $dx -gt 32767 -or $dy -lt -32767 -or $dy -gt 32767) {
-        throw "[BAD_REQUEST] a relative move is limited to ±32767 on each axis (got dx=$dx, dy=$dy)"
+        throw "[BAD_REQUEST] a relative move is limited to +/-32767 on each axis (got dx=$dx, dy=$dy)"
     }
     if ($dx -eq 0 -and $dy -eq 0) { throw "[BAD_REQUEST] a relative move needs a non-zero dx or dy" }
     Assert-NotCancelled 'before the relative move'
@@ -689,7 +689,7 @@ function Do-MouseMoveRelative([int]$dx, [int]$dy) {
     # Pointer acceleration is on by default, so the observed delta is routinely larger than
     # what was asked for -- and a window that locks or recentres the pointer reports none at
     # all while still receiving every event. Neither is a failure, and the reply says which
-    # of the two happened instead of leaving the caller to guess (§9).
+    # of the two happened instead of leaving the caller to guess (sec. 9).
     if ($observedX -eq 0 -and $observedY -eq 0) {
         $receipt['note'] = 'the pointer did not move on screen. The events were delivered, so either the target consumes relative motion without moving the cursor (a locked or recentred pointer, which is what this action exists for), or the desktop is discarding synthesized input. Check whether the target reacted before retrying.'
     } elseif ($observedX -ne $dx -or $observedY -ne $dy) {
@@ -700,7 +700,7 @@ function Do-MouseMoveRelative([int]$dx, [int]$dy) {
 
 function Do-MouseMove([int]$x, [int]$y, [bool]$wait = $false) {
     # The lowest-level sender there is, so the budget check belongs here as well: a click or a
-    # drag checks before it starts, and this one covers the moves it makes while it runs (§5.7).
+    # drag checks before it starts, and this one covers the moves it makes while it runs (sec. 5.7).
     Assert-CanSend 'before moving the pointer'
     # Deliberately returns NOTHING. A PowerShell function's return value is its
     # whole pipeline output, so a stray `1` here would prepend itself to every

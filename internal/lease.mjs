@@ -44,6 +44,9 @@ export function movesDesktop(cmd, args) {
   if (cmd === 'clipboard') return String(args?.op ?? 'get') !== 'get';
   if (cmd === 'uiact') return !READ_ONLY_ACTIONS.has(String(args?.action ?? '').toLowerCase());
   if (cmd === 'batch') {
+    // 新-P1-02 B2 / workerfeat A.3：dry run 是彩排——worker 每个检查都真跑但一个输入都
+    // 不派发（零副作用），所以它不占写租约，也不该把别的会话挡在桌面外。
+    if (args?.dryRun === true || args?.dry_run === true) return false;
     return (Array.isArray(args?.steps) ? args.steps : []).some((step) => {
       const action = String(step?.action ?? '').toLowerCase();
       if (action === 'clipboard') return String(step?.op ?? 'get') !== 'get';

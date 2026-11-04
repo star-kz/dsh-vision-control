@@ -74,7 +74,7 @@ public static class DshNative
     /// How many times the clipboard has changed since Windows started.
     ///
     /// This is what a borrow needs to know: it says *that* the clipboard changed under us,
-    /// not who changed it (8.txt §6 -- a sequence number judges change, never authorship).
+    /// not who changed it (8.txt sec. 6 -- a sequence number judges change, never authorship).
     [DllImport("user32.dll")]
     public static extern uint GetClipboardSequenceNumber();
 
@@ -162,7 +162,7 @@ public static class DshNative
 
     // The client area: the part of a window that belongs to the application, without its
     // title bar, borders or resize grips. `ClientToScreen` turns its origin into a screen
-    // point, which is what places it inside the window's own bitmap (方案 §2.2 捕获面).
+    // point, which is what places it inside the window's own bitmap (plan doc sec. 2.2, the capture surface).
     [DllImport("user32.dll")]
     public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
 

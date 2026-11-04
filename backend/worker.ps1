@@ -55,7 +55,7 @@ if ($null -ne $env:DSH_COMPUTER_USE_CANCEL_FILE -and "$($env:DSH_COMPUTER_USE_CA
 # prevent. The parent additionally checks that a ref came from its own session.
 $script:BootGen = [System.Guid]::NewGuid().ToString('N').Substring(0, 4)
 # How many requests this worker has served. Used to name the files a *derived* capture writes
-# (§5.5): the caller's path plus this worker's identity plus the request makes a name no other
+# (sec. 5.5): the caller's path plus this worker's identity plus the request makes a name no other
 # frame in this process -- or in another one -- can collide with.
 $script:RequestSeq = 0
 
@@ -79,7 +79,7 @@ function Assert-NotCancelled([string]$where) {
     }
 }
 
-# The budget of the call being served, as a script-scope instant (§5.7).
+# The budget of the call being served, as a script-scope instant (sec. 5.7).
 #
 # The deadline has to be visible to the *input* functions, not only to the batch loop that
 # computed it: a step that starts just before the budget runs out would otherwise send its
@@ -117,7 +117,7 @@ function Assert-CanSend([string]$where) {
 }
 
 function Test-InputDelivery([int]$sent, [int]$expected, [string]$what) {
-    # What one SendInput call actually did (§6: 部分输入事件成功可能被当作全部成功).
+    # What one SendInput call actually did (sec. 6: a partial input send can look like a full success).
     #
     # SendInput returns the number of events it *inserted*, so a non-zero count is not "all of
     # them" (Microsoft docs, SendInput): a click whose release was refused, or a typed string
@@ -241,7 +241,7 @@ public static class DshNative
     /// How many times the clipboard has changed since Windows started.
     ///
     /// This is what a borrow needs to know: it says *that* the clipboard changed under us,
-    /// not who changed it (8.txt §6 -- a sequence number judges change, never authorship).
+    /// not who changed it (8.txt sec. 6 -- a sequence number judges change, never authorship).
     [DllImport("user32.dll")]
     public static extern uint GetClipboardSequenceNumber();
 
@@ -329,7 +329,7 @@ public static class DshNative
 
     // The client area: the part of a window that belongs to the application, without its
     // title bar, borders or resize grips. `ClientToScreen` turns its origin into a screen
-    // point, which is what places it inside the window's own bitmap (方案 §2.2 捕获面).
+    // point, which is what places it inside the window's own bitmap (plan doc sec. 2.2, the capture surface).
     [DllImport("user32.dll")]
     public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
 
@@ -965,7 +965,7 @@ namespace DshUia
         private static IUIAutomation automation;
         private static string lastError = "";
 
-        // §7.4 item 7: measure before releasing. Every short-lived COM object this engine hands
+        // sec. 7.4 item 7: measure before releasing. Every short-lived COM object this engine hands
         // out is counted, and the ones with a clear scope are released where that scope ends.
         // The point of counting first is that the alternative -- calling ReleaseComObject on
         // everything in sight -- can release an element the ref registry is still holding and
@@ -1312,7 +1312,7 @@ namespace DshUia
 
             while (queue.Count > 0)
             {
-                // §7.4 item 2: the output budget and the traversal budget are separate questions.
+                // sec. 7.4 item 2: the output budget and the traversal budget are separate questions.
                 // `rows.Count >= maxNodes` only counts rows that were *kept*, so a tree of
                 // anonymous nodes -- dropped by skipEmpty, never counted -- used to be walked
                 // with no bound of its own. The visit budget is checked here, before a node is
@@ -1351,7 +1351,7 @@ namespace DshUia
                     }
                 }
                 // One array per visited node is what a walk of a large window allocates; without
-                // this it stays alive until the client is rebuilt (§7.4 item 7).
+                // this it stays alive until the client is rebuilt (sec. 7.4 item 7).
                 ReleaseTransient(children);
                 if (queue.Count > maxQueue) maxQueue = queue.Count;
             }
@@ -1366,7 +1366,7 @@ namespace DshUia
 
         /// Whether a control-type argument names exactly one UIA control type.
         ///
-        /// §7.4 item 3: the tool's matching for a control type is a substring test, so only a
+        /// sec. 7.4 item 3: the tool's matching for a control type is a substring test, so only a
         /// *fully named* type (`ControlType.Button`) may be pushed down as a provider filter;
         /// `Button` -- which the substring test matches -- must not be, because an exact
         /// condition would drop rows the caller would otherwise have got.
@@ -1444,7 +1444,7 @@ namespace DshUia
             IUIAutomationElement root = Root(hwnd, cache);
 
             IUIAutomationCondition condition;
-            // §7.4 item 3: only conditions that are *equivalent* when pushed down go to the
+            // sec. 7.4 item 3: only conditions that are *equivalent* when pushed down go to the
             // provider, so the enumeration itself is smaller. `automationId` is exact by
             // definition. A control type is pushed down only when the caller named one in full
             // (`ControlType.Button`); the tool's matching for a partial name is a substring
@@ -2090,7 +2090,7 @@ namespace DshUia
             return legacy.CurrentDescription ?? "";
         }
 
-        /// B1 (8.txt §5): the text a read can carry, read through the client that read the
+        /// B1 (8.txt sec. 5): the text a read can carry, read through the client that read the
         // tree.
         ///
         /// It lives here rather than in the managed wrapper because of a measured
@@ -2098,7 +2098,7 @@ namespace DshUia
         /// automation ids while the managed client answered 2 anonymous rows (a WinForms
         /// window served through the MSAA bridge). A text target resolved through the
         /// managed API therefore reports `target_required` on a window the caller is
-        /// plainly looking at. §5 asks for both engines; the managed implementation stays
+        /// plainly looking at. sec. 5 asks for both engines; the managed implementation stays
         /// as the fallback for a host where COM is unavailable.
         ///
         /// Everything is live-read: an element resolved through a plain FindAll has no
@@ -2548,6 +2548,95 @@ namespace DshUia
             if (id.Length > 0) label = label + " #" + id;
             return label;
         }
+        /// <summary>
+        /// A dry-run probe (NEW-P1-02 B2): everything Act does up to the point where it
+        /// would touch the element, and nothing beyond it. The same Resolve locates the
+        /// target, the enabled flag and the pattern the action would drive are read off
+        /// the match, and the method returns without invoking, focusing, selecting or
+        /// typing anything -- so the verdict a batch rehearsal reports is the one the
+        /// real step would have produced against this desktop, not an approximation.
+        /// </summary>
+        public static void Probe(long hwnd, string action,
+                                 string wantId, string wantName, string wantType, string wantClass, int index,
+                                 out object[] outMatched, out string outPattern, out bool outEnabled, out bool outOk, out string outError)
+        {
+            outMatched = new object[0];
+            outPattern = "";
+            outEnabled = false;
+            outOk = false;
+            outError = "";
+            try
+            {
+                Init();
+                IUIAutomationElement target = Resolve(hwnd, wantId, wantName, wantType, wantClass, index, out outMatched, out outError);
+                if (target == null) return;
+                outEnabled = Flag(target, UIA_IsEnabledPropertyId, true);
+
+                // The pattern each action drives, mirroring Act, ReadCaret and the text
+                // readers. focus needs none: SetFocus lives on the element itself.
+                int patternId = 0;
+                string patternLabel = "";
+                switch (action)
+                {
+                    case "invoke": patternId = UIA_InvokePatternId; patternLabel = "Invoke"; break;
+                    case "set_value": patternId = UIA_ValuePatternId; patternLabel = "ValuePattern.SetValue"; break;
+                    case "get_value": patternId = UIA_ValuePatternId; patternLabel = "ValuePattern"; break;
+                    case "toggle": patternId = UIA_TogglePatternId; patternLabel = "Toggle"; break;
+                    case "select": patternId = UIA_SelectionItemPatternId; patternLabel = "SelectionItem"; break;
+                    case "expand":
+                    case "collapse": patternId = UIA_ExpandCollapsePatternId; patternLabel = "ExpandCollapse"; break;
+                    case "scroll_into_view": patternId = UIA_ScrollItemPatternId; patternLabel = "ScrollItemPattern.ScrollIntoView (it is not inside a scrollable container)"; break;
+                    case "close":
+                    case "minimize":
+                    case "maximize":
+                    case "restore": patternId = UIA_WindowPatternId; patternLabel = "WindowPattern (close/minimize/maximize/restore)"; break;
+                    case "legacy_action": patternId = UIA_LegacyIAccessiblePatternId; patternLabel = "LegacyIAccessiblePattern.DoDefaultAction"; break;
+                    case "get_text":
+                    case "select_text":
+                    case "click_text":
+                    case "locate_text": patternId = UIA_TextPatternId; patternLabel = "TextPattern"; break;
+                    case "get_caret": patternId = UIA_TextPattern2Id; patternLabel = "TextPattern2"; break;
+                    case "focus": patternId = 0; patternLabel = "element.SetFocus"; break;
+                    default: outError = "unknown UI Automation action '" + action + "'"; return;
+                }
+                outPattern = patternLabel;
+
+                bool reading = action == "get_value" || action == "get_text" || action == "locate_text" || action == "get_caret";
+                if (!reading && !outEnabled)
+                {
+                    Dictionary<string, object> matchedRow = (Dictionary<string, object>)outMatched[0];
+                    outError = "the matched element is disabled (" + Label(matchedRow) + "), so it would ignore the action; nothing was sent";
+                    return;
+                }
+
+                if (patternId != 0)
+                {
+                    object raw;
+                    int hr = target.GetCurrentPattern(patternId, out raw);
+                    if (hr == 0 && raw != null)
+                    {
+                        outOk = true;
+                        return;
+                    }
+                    // get_value keeps Act's MSAA fallback: a value the legacy bridge can
+                    // read is a value the real step would return.
+                    if (action == "get_value" && LegacyText(target).Length > 0)
+                    {
+                        outPattern = patternLabel + " (via LegacyIAccessible)";
+                        outOk = true;
+                        return;
+                    }
+                    outError = "the matched element does not support " + patternLabel;
+                    return;
+                }
+                outOk = true;
+            }
+            catch (Exception error)
+            {
+                outError = error.Message;
+            }
+        }
+
     }
 }
 '@
@@ -2608,7 +2697,7 @@ $EXTENDED = @(0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2C, 0x2D, 0x2E, 
 
 $script:HeldKeys = New-Object System.Collections.Generic.List[int]
 $script:HeldButtons = New-Object System.Collections.Generic.List[int]
-# Where the held-input state is mirrored for the host's independent release path (§6 ④).
+# Where the held-input state is mirrored for the host's independent release path (sec. 6 rule 4).
 # Empty means "do not mirror", which is what a worker started by hand gets.
 $script:HeldStateFile = ''
 if ($env:DSH_COMPUTER_USE_HELD_FILE) { $script:HeldStateFile = "$($env:DSH_COMPUTER_USE_HELD_FILE)" }
@@ -2668,8 +2757,8 @@ $script:WriteStampTtlMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_WRITE_TTL_MS' 2000 
 # shape as the stability poll -- start immediately, sample, compare, sleep the
 # remainder -- so a condition that is already true costs one check and no sleep.
 $script:WaitPollMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_WAIT_POLL_MS' 120 20 2000
-# 方案 §6.2: "低成本窗口或文件检查可较高频轮询；大范围 UIA 和视觉判断应降低频率、缩小范围，
-# 并考虑退避." A UIA tree walk or a screenshot fingerprint costs real work, so those conditions
+# Plan doc sec. 6.2: "low-cost window or file checks may poll at a higher rate; wide UIA and visual checks should poll less often, over a smaller scope,
+# and consider backing off." A UIA tree walk or a screenshot fingerprint costs real work, so those conditions
 # start slower and back off to a lower ceiling than a window's existence or a file's state.
 $script:WaitHeavyPollMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_WAIT_HEAVY_POLL_MS' 300 20 2000
 $script:WaitMaxMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_WAIT_MAX_MS' 30000 100 120000
@@ -2681,7 +2770,7 @@ $script:WaitMaxMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_WAIT_MAX_MS' 30000 100 12
 $script:ReadSettleMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_READ_SETTLE_MS' 0 0 1000
 
 # How old a frame has to be before a coordinate taken from it is checked against what the
-# surface looks like *now* (方案 §3.2：滚动、导航、应用自行改变内容都要让旧定位失效).
+# surface looks like *now* (plan doc sec. 3.2: scrolling, navigation and the app changing its own content must all invalidate an old location).
 #
 # Geometry cannot see any of those: the rectangle is identical and the pixels are not. So a
 # frame carries a fingerprint of the surface it was captured from, and a frame that has been
@@ -2698,9 +2787,9 @@ $script:LastWrite = $null
 
 # The last drag this session performed: @{ id; x; y; hwnd; generation; atMs }, or $null.
 #
-# 8.txt §8 后半：一次拖拽的落点要能被下一次调用接着用（"从刚才那里再画一段"），省掉重新定位起点的往返。
-# 与 $script:LastWrite 同一套做法：后端持有、带有效期、过期即置空 —— 而且**绝不返回旧值**，
-# 调用方拿到的是明确拒绝（DRAG_HANDLE_STALE），不是"大概还在那儿"的猜测。
+# 8.txt sec. 8 second half: the landing point of one drag must be reusable by the next call ("draw the next segment from where we stopped"), saving the re-location round trip.
+# Same pattern as $script:LastWrite: held by the backend, time-limited, cleared on expiry -- and it NEVER returns a stale value;
+# the caller gets an explicit refusal (DRAG_HANDLE_STALE), not a guess that it is "probably still there".
 $script:LastDrag = $null
 $script:DragTtlMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_DRAG_TTL_MS' 8000 100 120000
 $script:DragGeneration = 0
@@ -3161,7 +3250,7 @@ function Remove-HeldButton([uint32]$downFlag) {
 }
 
 function Save-HeldState {
-    # §6 ④: what this worker currently believes is held is written where *another process* can
+    # sec. 6 rule 4: what this worker currently believes is held is written where *another process* can
     # read it, because the last-resort release cannot run inside a worker that is being killed.
     #
     # A worker holding a button is the one case where killing it is not enough: the release
@@ -3525,10 +3614,10 @@ function Save-BitmapToFile($bmp, [string]$path, [string]$format, [int]$quality) 
 }
 
 # ---------------------------------------------------------------------------
-# Related windows and multi-frame capture (8.txt §7)
+# Related windows and multi-frame capture (8.txt sec. 7)
 #
 # A popup or a menu is its own window, and a single frame of the window underneath cannot
-# say that it is there. §7 splits the answer in two: the *relationship* of the windows
+# say that it is there. sec. 7 splits the answer in two: the *relationship* of the windows
 # around the target (who owns whom) and the *real z-order* (what is actually in front) are
 # two different facts, and a frame per window is an explicit request rather than a new
 # default.
@@ -3537,7 +3626,7 @@ $script:ZOrderCache = $null
 
 function Get-TopLevelZOrder {
     # Every top-level window in the order the shell keeps them: index 0 is the topmost.
-    # This is the real z-order, which §7 keeps apart from the ownership chain -- a popup
+    # This is the real z-order, which sec. 7 keeps apart from the ownership chain -- a popup
     # owned by the target can still sit under it, and reporting the chain as if it were the
     # order would say the opposite.
     $cached = $script:ZOrderCache
@@ -3554,7 +3643,7 @@ function Get-TopLevelZOrder {
 }
 
 function Get-RelatedWindowList([int64]$hwnd) {
-    # The target and the windows that belong to it, each with the metadata §7 lists.
+    # The target and the windows that belong to it, each with the metadata sec. 7 lists.
     #
     # A window belongs to the target when the ownership chain from it reaches the target:
     # that is what a dialog, a popup menu or a tool window of the same application looks
@@ -3610,12 +3699,12 @@ function Get-RelatedWindowList([int64]$hwnd) {
 }
 
 function Do-ScreenshotRelated([object]$Arg) {
-    # §7 step two: one frame per related window, each through the ordinary single-window
+    # sec. 7 step two: one frame per related window, each through the ordinary single-window
     # capture path -- so every frame is encoded, registered under its own frame id and
     # reports its own geometry exactly like a single capture does.
     #
     # Default is still one frame: this only runs when the caller asked for `captures:
-    # 'related'`, and the budget (§7) is two frames by default, three at most.
+    # 'related'`, and the budget (sec. 7) is two frames by default, three at most.
     $hwnd = 0
     if ($null -ne $Arg.window) { $hwnd = [int64]$Arg.window }
     if ($hwnd -eq 0) { throw "[BAD_REQUEST] captures: 'related' needs a window: it captures that window and the windows that belong to it" }
@@ -3638,7 +3727,7 @@ function Do-ScreenshotRelated([object]$Arg) {
         if ([bool]$row['minimized']) {
             # PrintWindow on a minimized window returns the shell's placeholder sliver --
             # a few dozen pixels that look like content. Skipping it and saying so beats
-            # handing back a frame nobody can use (§7).
+            # handing back a frame nobody can use (sec. 7).
             $omitted.Add([ordered]@{ hwnd = [int64]$row['hwnd']; relation = "$($row['relation'])"; reason = 'minimized: a window capture would return the shell placeholder, not the window' })
             continue
         }
@@ -3647,7 +3736,7 @@ function Do-ScreenshotRelated([object]$Arg) {
             $value = Get-ArgMember $Arg $pair[1]
             if ($null -ne $value) { $single[$pair[0]] = $value }
         }
-        # Each frame needs its own file (§5.5). The caller's `path` names *the* capture; a loop
+        # Each frame needs its own file (sec. 5.5). The caller's `path` names *the* capture; a loop
         # that wrote every related window to it left one file holding whichever frame finished
         # last, while the reply listed several -- and nothing downstream can recover the ones
         # that were overwritten on the way. So every derived frame gets a name of its own: the
@@ -3772,7 +3861,7 @@ function Do-Screenshot([object]$Arg) {
         # window), and the part that is not the application -- title bar, borders, resize grips --
         # is cropped away. The offset comes from the client origin in screen coordinates against
         # the window's own origin, so it holds for any theme, border width or DPI rather than
-        # being guessed from a fixed title-bar height (方案 §2.2 "明确整个窗口、客户区或显示器").
+        # being guessed from a fixed title-bar height (plan doc sec. 2.2: "state clearly whether it is the whole window, the client area or the display").
         if ("$($Arg.surface)" -eq 'client' -and $null -eq $Arg.region) {
             $clientRect = New-Object DshNative+RECT
             $clientOrigin = New-Object DshNative+POINT
@@ -4083,8 +4172,8 @@ function Do-Screenshot([object]$Arg) {
         # The spaces this frame spans, each named (see the block above): the surface the
         # pixels came from, the crop of it that this image holds, and the size of the file.
         surfaceKind = $surfaceKind
-        # The coordinate space of every number in this receipt (方案 §3.1 第 6 条: "插件返回实际尺寸、
-        # 实际区域、捕获面、frameId 和坐标单位"). Stated as a field rather than left to prose, because
+        # The coordinate space of every number in this receipt (plan doc sec. 3.1 item 6: "the plugin returns the actual size,
+        # actual region, capture surface, frameId and coordinate unit"). Stated as a field rather than left to prose, because
         # a caller reading `x`/`width` off the receipt needs to know they are physical desktop
         # pixels and not virtualized logical ones.
         units = 'physicalPixels'
@@ -4183,17 +4272,17 @@ function Wait-ForCursorToSettle([int]$x, [int]$y, [int]$timeoutMs) {
 
 function Do-MouseMoveRelative([int]$dx, [int]$dy) {
     # A move is input: if the call's budget is already spent, the pointer stays where it is and
-    # the caller is told why (§5.7).
+    # the caller is told why (sec. 5.7).
     Assert-CanSend 'before a relative move'
     # A relative move is the only kind that reaches a target whose pointer is locked,
     # hidden or recentred (a canvas, a 3-D viewport, some games): there the absolute
-    # position means nothing and the application consumes the *delta* (8.txt §9).
+    # position means nothing and the application consumes the *delta* (8.txt sec. 9).
     #
     # It goes out as a plain MOUSEEVENTF_MOVE rather than through SetCursorPos, and that is
     # the whole point: SetCursorPos is a warp the application may ignore or undo, while the
     # relative event is the same thing the hardware sends.
     if ($dx -lt -32767 -or $dx -gt 32767 -or $dy -lt -32767 -or $dy -gt 32767) {
-        throw "[BAD_REQUEST] a relative move is limited to ±32767 on each axis (got dx=$dx, dy=$dy)"
+        throw "[BAD_REQUEST] a relative move is limited to +/-32767 on each axis (got dx=$dx, dy=$dy)"
     }
     if ($dx -eq 0 -and $dy -eq 0) { throw "[BAD_REQUEST] a relative move needs a non-zero dx or dy" }
     Assert-NotCancelled 'before the relative move'
@@ -4215,7 +4304,7 @@ function Do-MouseMoveRelative([int]$dx, [int]$dy) {
     # Pointer acceleration is on by default, so the observed delta is routinely larger than
     # what was asked for -- and a window that locks or recentres the pointer reports none at
     # all while still receiving every event. Neither is a failure, and the reply says which
-    # of the two happened instead of leaving the caller to guess (§9).
+    # of the two happened instead of leaving the caller to guess (sec. 9).
     if ($observedX -eq 0 -and $observedY -eq 0) {
         $receipt['note'] = 'the pointer did not move on screen. The events were delivered, so either the target consumes relative motion without moving the cursor (a locked or recentred pointer, which is what this action exists for), or the desktop is discarding synthesized input. Check whether the target reacted before retrying.'
     } elseif ($observedX -ne $dx -or $observedY -ne $dy) {
@@ -4226,7 +4315,7 @@ function Do-MouseMoveRelative([int]$dx, [int]$dy) {
 
 function Do-MouseMove([int]$x, [int]$y, [bool]$wait = $false) {
     # The lowest-level sender there is, so the budget check belongs here as well: a click or a
-    # drag checks before it starts, and this one covers the moves it makes while it runs (§5.7).
+    # drag checks before it starts, and this one covers the moves it makes while it runs (sec. 5.7).
     Assert-CanSend 'before moving the pointer'
     # Deliberately returns NOTHING. A PowerShell function's return value is its
     # whole pipeline output, so a stray `1` here would prepend itself to every
@@ -4640,7 +4729,7 @@ function Test-LandingGuard([int64]$targetHwnd, [int]$targetPid, [int]$x, [int]$y
     # old check lived inside the "the window moved" branch, which meant a still window that
     # had been covered by something else passed the guard and took the input.
     #
-    # A pid is not an identity (方案 §3.3 第 3 条: 相同 PID 不足以证明相同窗口): "same process"
+    # A pid is not an identity (plan doc sec. 3.3 item 3: the same PID does not prove the same window): "same process"
     # does not make it the same window, and a second top-level window of the same application
     # sitting over the target would take the input while the receipt said the target had been
     # verified. The outcomes are therefore:
@@ -4663,7 +4752,7 @@ function Test-LandingGuard([int64]$targetHwnd, [int]$targetPid, [int]$x, [int]$y
         return [ordered]@{ ok = $true; how = 'root'; hit = $hit }
     }
     # An explicit declaration is the most specific thing a caller can say about what it expects
-    # to be under the point, so it is answered first (方案 §3.3 第 3 条: a transition the caller
+    # to be under the point, so it is answered first (plan doc sec. 3.3 item 3: a transition the caller
     # named is followed rather than refused).
     $allowed = $false
     if ($null -ne $allowWindows) {
@@ -4780,8 +4869,8 @@ function Get-FrameTransform($frame, [double]$ax, [double]$ay) {
     $ratioX = [double]$crop.width / [double]$encodedWidth
     $ratioY = [double]$crop.height / [double]$encodedHeight
     # Integer pixel indices, nearest neighbour, one rounding per axis at the very end of the
-    # chain: image pixel i stands for the source pixels around source pixel i × ratio, and the
-    # nearest one is what it is. This keeps a 1:1 frame exact (i × 1 is i), keeps a half-scale
+    # chain: image pixel i stands for the source pixels around source pixel i * ratio, and the
+    # nearest one is what it is. This keeps a 1:1 frame exact (i * 1 is i), keeps a half-scale
     # frame's pixel i in the block of source pixels it came from, and -- unlike adding half a
     # pixel before multiplying -- does not drift by one on every ratio above 1.
     $sx = [double]$crop.x + [Math]::Round(($ex * $ratioX), [System.MidpointRounding]::AwayFromZero)
@@ -4812,7 +4901,7 @@ function Assert-FrameContentFresh($frame, [bool]$verify) {
 function Test-FrameLive([string]$frameId, [object]$Options = $null) {
     # Is this frame still the thing it was? -- asked with no point involved.
     #
-    # Split out of Resolve-FramePoint (§5.3). Once a gesture's points have been projected they
+    # Split out of Resolve-FramePoint (sec. 5.3). Once a gesture's points have been projected they
     # are *desktop* coordinates, so an in-flight check cannot go through a function whose input
     # is an image pixel: the drag used to hand desktop waypoints back to Resolve-FramePoint,
     # which projected them a second time. A perfectly usable frame then failed a bounds test and
@@ -4937,7 +5026,7 @@ function Resolve-FramePoint([string]$frameId, [int]$px, [int]$py, [object]$Optio
     $note = "$($projected.note)"
     $guard = $null
     # The frame and the window it came from, checked once, without involving this point
-    # (§5.3): the projection above is the only conversion this coordinate ever gets.
+    # (sec. 5.3): the projection above is the only conversion this coordinate ever gets.
     $live = Test-FrameLive $frameId $Options
     if ($live.ok -ne $true) { return @{ ok = $false; error = "$($live.error)" } }
     if ($live.screen -eq $true) {
@@ -4968,7 +5057,7 @@ function Resolve-FramePoint([string]$frameId, [int]$px, [int]$py, [object]$Optio
     $guard = Test-LandingGuard ([int64]$frame.hwnd) ([int]$frame.pid) $x $y $allowWindows
     $activated = $false
     if ($guard.ok -ne $true -and $allowActivate) {
-        # One bounded attempt at recovery (方案 §3.3 第 5 条): bring the target forward and then
+        # One bounded attempt at recovery (plan doc sec. 3.3 item 5): bring the target forward and then
         # *look again* rather than assuming the activation worked -- SetForegroundWindow is
         # subject to the system's own rules and can quietly do nothing. Exactly one attempt: a
         # recovery that keeps trying is a recovery that hides the problem, and the receipt says
@@ -5018,7 +5107,7 @@ function Get-FrameReceipt($frame, [int]$px, [int]$py, [int]$x, [int]$y, [int]$dr
     return $receipt
 }
 function Do-Click([object]$Arg) {
-    # Nothing is sent to the desktop once the call's budget is gone (§5.7): the refusal lands
+    # Nothing is sent to the desktop once the call's budget is gone (sec. 5.7): the refusal lands
     # before the button goes down, so a spent call cannot still move the pointer or click.
     Assert-CanSend 'before the click'
     $x = [int]$Arg.x
@@ -5041,6 +5130,19 @@ function Do-Click([object]$Arg) {
     $modifierVks = @()
     if ($modifierChord -ne '') { $modifierVks = Get-KeyVkList $modifierChord }
     $preferA11y = ($Arg.preferA11y -ne $false)
+
+    # Click hold time (OPT-P0-13): applications that poll GetAsyncKeyState instead of
+    # reading the message queue can miss a down/up pair delivered inside one SendInput
+    # batch -- both events land in the same poll tick and the app never observes the
+    # button down. The pair is therefore split into two sends with a hold between them
+    # (default 60 ms; DSH_COMPUTER_USE_CLICK_HOLD_MS tunes it, 0 restores back-to-back).
+    $clickHoldMs = 60
+    if ($null -ne $env:DSH_COMPUTER_USE_CLICK_HOLD_MS -and "$($env:DSH_COMPUTER_USE_CLICK_HOLD_MS)" -ne '') {
+        $parsedHold = 0
+        if ([int]::TryParse("$($env:DSH_COMPUTER_USE_CLICK_HOLD_MS)", [ref]$parsedHold)) {
+            $clickHoldMs = [Math]::Max(0, [Math]::Min(500, $parsedHold))
+        }
+    }
 
     # a11y-first covers the plain single left click only. A chorded click or a double
     # click is a pointer gesture by definition, and there is no accessibility
@@ -5077,13 +5179,25 @@ function Do-Click([object]$Arg) {
     try {
         Do-MouseMove $x $y $true
         $flags = Get-ButtonFlags $button
-        $events = @()
+        # down and up go out as separate sends with the hold between them (OPT-P0-13),
+        # and successive clicks are spaced 80 ms: a double click then totals
+        # 60+80+60 = 200 ms, still inside the system double-click window. The button
+        # is registered as held across each hold so a worker killed in that window
+        # still gets the independent release (same sec. 6 rule 4 rule the drag follows);
+        # the record is dropped only once the release is actually delivered.
+        $sent = 0
+        $expected = 2 * $clicks
         for ($i = 0; $i -lt $clicks; $i++) {
-            $events += [DshNative]::Mouse(0, 0, 0, $flags[0])
-            $events += [DshNative]::Mouse(0, 0, 0, $flags[1])
+            $sentDown = [int][DshNative]::Send(@([DshNative]::Mouse(0, 0, 0, $flags[0])))
+            $sent += $sentDown
+            if ($sentDown -gt 0) { Add-HeldButton ([uint32]$flags[0]) }
+            if ($clickHoldMs -gt 0) { Start-Sleep -Milliseconds $clickHoldMs }
+            $sentUp = [int][DshNative]::Send(@([DshNative]::Mouse(0, 0, 0, $flags[1])))
+            $sent += $sentUp
+            if ($sentUp -gt 0 -and $sentDown -gt 0) { Remove-HeldButton ([uint32]$flags[0]) }
+            if ($i -lt ($clicks - 1)) { Start-Sleep -Milliseconds 80 }
         }
-        $sent = [DshNative]::Send($events)
-        $delivery = Assert-InputDelivered $sent $events.Count "the click ($clicks press/release pair(s))" 'the click'
+        $delivery = Assert-InputDelivered $sent $expected "the click ($clicks press/release pair(s))" 'the click'
     } finally {
         # Released in a finally: a modifier left down because the click threw would
         # change the meaning of everything the caller does next.
@@ -5098,18 +5212,18 @@ function Do-Click([object]$Arg) {
 
 function Do-Drag([object]$Arg) {
     # A drag is the longest input there is, and the deadline is checked before the button goes
-    # down *and* at every waypoint -- a gesture that is stopped half way always lets go (§5.7).
+    # down *and* at every waypoint -- a gesture that is stopped half way always lets go (sec. 5.7).
     Assert-CanSend 'before the drag'
     $sx = [int]$Arg.fromX
     $sy = [int]$Arg.fromY
     $ex = [int]$Arg.toX
     $ey = [int]$Arg.toY
 
-    # ---------------------------------------------------------------- continuation (§8 后半)
+    # ---------------------------------------------------------------- continuation (sec. 8 second half)
     #
-    # "从刚才那里再画一段"：起点取上一次拖拽的落点，省掉重新定位的往返。句柄由后端持有、带有效期，
-    # 过期或不匹配时**明确拒绝**（DRAG_HANDLE_MISSING / DRAG_HANDLE_STALE），绝不猜一个附近的点接着画；
-    # 拒绝发生在任何输入发出之前（action_sent=false）。
+    # "Draw the next segment from where we stopped": the start is the landing point of the previous drag, saving the re-location round trip. The handle is held by the backend with a time limit;
+    # an expired or mismatched handle is refused outright (DRAG_HANDLE_MISSING / DRAG_HANDLE_STALE) -- a nearby point is never guessed and drawn from;
+    # the refusal happens before any input is sent (action_sent=false).
     $fromLast = ($null -ne $Arg.fromLast) -and ($Arg.fromLast -eq $true -or "$($Arg.fromLast)" -eq 'true')
     $continueFrom = ''
     if ($null -ne $Arg.continueFrom) { $continueFrom = "$($Arg.continueFrom)" }
@@ -5122,7 +5236,7 @@ function Do-Drag([object]$Arg) {
         $sy = [int]$handle.handle.y
     }
 
-    # ---------------------------------------------------------------- path form (§8)
+    # ---------------------------------------------------------------- path form (sec. 8)
     #
     # A path is a shape, not a straight line: drawing, walking around an obstacle, or a
     # selection that has to pass through a particular cell. It is normalised before anything
@@ -5152,6 +5266,15 @@ function Do-Drag([object]$Arg) {
         $durationMs = [int]$Arg.durationMs
         if ($durationMs -lt 100) { $durationMs = 100 }
         if ($durationMs -gt 5000) { $durationMs = 5000 }
+    }
+    # Drop-point dwell before the release (OPT-P0-12), default 120 ms;
+    # DSH_COMPUTER_USE_DRAG_DWELL_MS tunes it, 0 disables.
+    $dragDwellMs = 120
+    if ($null -ne $env:DSH_COMPUTER_USE_DRAG_DWELL_MS -and "$($env:DSH_COMPUTER_USE_DRAG_DWELL_MS)" -ne '') {
+        $parsedDwell = 0
+        if ([int]::TryParse("$($env:DSH_COMPUTER_USE_DRAG_DWELL_MS)", [ref]$parsedDwell)) {
+            $dragDwellMs = [Math]::Max(0, [Math]::Min(2000, $parsedDwell))
+        }
     }
 
     # Both ends of a gesture can be given in the image coordinates of a capture, on the
@@ -5197,7 +5320,7 @@ function Do-Drag([object]$Arg) {
     # What the gesture walks once the button is down, and how long it spends between
     # waypoints. The straight line keeps its old `steps` interpolation; a path is sampled by
     # arc length over its whole duration, so a long segment and a short one both get the
-    # motion they need instead of each segment paying the same fixed wait (§8).
+    # motion they need instead of each segment paying the same fixed wait (sec. 8).
     $waypoints = @()
     $paceMs = 12
     $sampleCount = 0
@@ -5267,9 +5390,9 @@ function Do-Drag([object]$Arg) {
                 Assert-NotCancelled "during the drag (step $travelled of $($waypoints.Count))"
                 # The window the gesture was projected against has to still be there: a
                 # window that closed mid-drag turns the rest of the path into coordinates on
-                # whatever is behind it (§8 asks for the target to be checked while it runs).
+                # whatever is behind it (sec. 8 asks for the target to be checked while it runs).
                 #
-                # What is checked here is the *frame*, not a point (§5.3): `$waypoint` is
+                # What is checked here is the *frame*, not a point (sec. 5.3): `$waypoint` is
                 # already a desktop coordinate, so it must not go back through the image-space
                 # resolver -- that projected it a second time, and a live frame on a scaled or
                 # offset window was refused as stale while a changed frame could slip through.
@@ -5285,6 +5408,15 @@ function Do-Drag([object]$Arg) {
                 Do-MouseMove ([int]$waypoint.x) ([int]$waypoint.y)
                 Start-Sleep -Milliseconds $paceMs
             }
+            # Drop-site settle + dwell before the button goes up (OPT-P0-12): HTML5
+            # drag-and-drop and owner-drawn lists decide a drop from the last
+            # drag-over they processed, and a release that lands in the same tick as
+            # the final move is silently dropped. The settle move re-asserts the
+            # endpoint with the cursor-settle read-back ($wait=$true), then the dwell
+            # gives the target a beat to register the hover. Both run only on the
+            # normal path -- a cancelled drag releases immediately in the finally.
+            Do-MouseMove $ex $ey $true
+            if ($dragDwellMs -gt 0) { Wait-Cancellable $dragDwellMs }
         } finally {
             # The release belongs in the finally, not after the loop. When a move step
             # threw, the old code jumped straight to forgetting the button was held --
@@ -5300,8 +5432,8 @@ function Do-Drag([object]$Arg) {
         if ($modifierVks.Count -gt 0) { [void](Send-Modifiers $modifierVks $false) }
     }
     Set-WriteStamp -What 'drag'
-# 8.txt §8 后半：把这次拖拽的落点记进句柄，供下一次用 continue_from/from_last 接着画（过期即失效）。
-# 窗口暂时不记（0 = 未知）：句柄的"换窗口要拒绝"要等续画侧的读取实现后一起接上，见台账 §4.1。
+# 8.txt sec. 8 second half: record this drag's landing point into the handle, so the next call can continue from it with continue_from/from_last (expires on timeout).
+# The window is not recorded for now (0 = unknown): the handle's "refuse when the window changed" rule is wired up together with the continuation-side read; see ledger sec. 4.1.
 [void]($script:LastDrag = Set-DragHandle -x $ex -y $ey)
     $value = [ordered]@{ from = [ordered]@{ x = $sx; y = $sy }; to = [ordered]@{ x = $ex; y = $ey }; steps = $steps }
     if ($path.Count -gt 1) {
@@ -5309,7 +5441,7 @@ function Do-Drag([object]$Arg) {
     }
     if ($modifierChord -ne '') { $value.modifiers = $modifierChord }
     if ($null -ne $frameReceipt) { $value.frame = $frameReceipt }
-    # 8.txt §8 后半：把句柄 id 交给调用方 —— 下一次要"接着画"就引用它（或直接 from_last）。
+    # 8.txt sec. 8 second half: hand the handle id to the caller -- to "keep drawing" next time, reference it (or just use from_last).
     if ($null -ne $script:LastDrag) { $value['handle'] = "$($script:LastDrag.id)" }
     return $value
 }
@@ -5389,19 +5521,32 @@ function Do-Type([object]$Arg) {
     $all = $events.ToArray()
     $sent = 0
     $expectedEvents = $all.Length
-    for ($i = 0; $i -lt $all.Length; $i += $chunk) {
-        # One check per chunk, not per character: the point is that a cancel stops a
-        # long paste within a few milliseconds, without paying a file stat per key.
-        Assert-NotCancelled "while typing (character $i of $($all.Length / 2))"
-        Assert-WithinDeadline "while typing (character $i of $($all.Length / 2))"
-        $len = [Math]::Min($chunk, $all.Length - $i)
-        $slice = New-Object DshNative+INPUT[] $len
-        [Array]::Copy($all, $i, $slice, 0, $len)
-        $sent += [DshNative]::Send($slice)
-        if ($delay -gt 0) { Start-Sleep -Milliseconds $delay }
+    if ($delay -le 0) {
+        for ($i = 0; $i -lt $all.Length; $i += $chunk) {
+            # One check per chunk, not per character: the point is that a cancel stops a
+            # long paste within a few milliseconds, without paying a file stat per key.
+            Assert-NotCancelled "while typing (character $i of $($all.Length / 2))"
+            Assert-WithinDeadline "while typing (character $i of $($all.Length / 2))"
+            $len = [Math]::Min($chunk, $all.Length - $i)
+            $slice = New-Object DshNative+INPUT[] $len
+            [Array]::Copy($all, $i, $slice, 0, $len)
+            $sent += [DshNative]::Send($slice)
+        }
+    } else {
+        # delayMs is a per-key delay (OPT-P1-06, matching the tool contract's
+        # per-character wording): a delayed type sends each key on its own and sleeps
+        # between keys. Events are laid out as down+up pairs, two per character, so
+        # stepping by two walks keys. The cancel check rides along per key -- a caller
+        # that asked for a slow type wants a cancel to land promptly.
+        for ($i = 0; $i -lt $all.Length; $i += 2) {
+            Assert-NotCancelled "while typing (character $([int]($i / 2)) of $($all.Length / 2))"
+            Assert-WithinDeadline "while typing (character $([int]($i / 2)) of $($all.Length / 2))"
+            $sent += [DshNative]::Send(@($all[$i], $all[$i + 1]))
+            if (($i + 2) -lt $all.Length) { Start-Sleep -Milliseconds $delay }
+        }
     }
     # Counted, not floored: a string that lost a chunk is a partial action, and the caller is
-    # told how much of it arrived rather than being told "typed" (§6).
+    # told how much of it arrived rather than being told "typed" (sec. 6).
     $delivery = Assert-InputDelivered $sent $expectedEvents "typing $count character(s)" 'the typed text'
     Set-WriteStamp -What 'type' -Hwnd $Arg.intoHwnd
     return [ordered]@{ typed = $count; events = $sent; expectedEvents = $expectedEvents; skipped = $skipped; foreground = (Get-ForegroundInfo) }
@@ -5435,7 +5580,7 @@ function Send-Modifiers([int[]]$vks, [bool]$down) {
     }
     $sent = [DshNative]::Send($events)
     # A modifier that only half goes down (or only half comes back up) is the worst partial
-    # send there is: the next action would run with shift or ctrl silently held (§6).
+    # send there is: the next action would run with shift or ctrl silently held (sec. 6).
     [void](Assert-InputDelivered $sent $events.Count "the modifier chord $(if ($down) { 'down' } else { 'up' })" 'the modifier')
     return $sent
 }
@@ -5475,7 +5620,7 @@ function Do-Key([object]$Arg) {
         }
         $sentDown = [DshNative]::Send($down.ToArray())
         # Half a chord held down is not "a key that was pressed": the caller is told how much
-        # of it went down, and the release below still runs (§6).
+        # of it went down, and the release below still runs (sec. 6).
         $deliveryDown = Assert-InputDelivered $sentDown $down.Count "the held key chord '$chord' (down)" 'the key hold'
         foreach ($vk in $vks) { Add-HeldKey $vk }
         try {
@@ -5585,7 +5730,7 @@ function Send-CtrlV {
 }
 
 function Get-TextFingerprint([string]$text) {
-    # An auxiliary check only. §6 is explicit that a fingerprint must not be used to decide
+    # An auxiliary check only. sec. 6 is explicit that a fingerprint must not be used to decide
     # *who* changed the clipboard -- the sequence number answers "did it change", and that is
     # the question a borrow needs answered.
     if ([string]::IsNullOrEmpty($text)) { return '' }
@@ -5602,7 +5747,7 @@ function Get-ClipboardShape {
     #
     # The formats matter as much as the text. "The text was read back" is not "the clipboard
     # was saved": an image, a file list or rich markup survives no round trip through this
-    # path, and a caller told "saved" would lose it without ever knowing (8.txt §6).
+    # path, and a caller told "saved" would lose it without ever knowing (8.txt sec. 6).
     $last = $null
     for ($i = 0; $i -lt $CLIPBOARD_ATTEMPTS; $i++) {
         try {
@@ -5620,7 +5765,7 @@ function Get-ClipboardShape {
                 ok         = $true
                 present    = $present
                 # An empty clipboard and "content whose text is empty" are different facts and
-                # are kept apart here on purpose (8.txt §6).
+                # are kept apart here on purpose (8.txt sec. 6).
                 empty      = (-not $present) -or (@($formats).Count -eq 0)
                 isText     = $isText
                 text       = $text
@@ -5649,7 +5794,7 @@ function Get-ClipboardShape {
 }
 
 function Get-PasteVerification([object]$Arg, [string]$text) {
-    # A postcondition for a paste, when the caller can name a readable control (§6): a fixed
+    # A postcondition for a paste, when the caller can name a readable control (sec. 6): a fixed
     # wait is a fallback, never a proof, but "the text is in that control" is a proof. $null
     # when the caller asked for no verification.
     $verify = Get-ArgMember $Arg 'verify'
@@ -5713,12 +5858,12 @@ function Get-PasteVerification([object]$Arg, [string]$text) {
 
 function Do-Paste([object]$Arg) {
     # The clipboard is touched by a paste, so it is input like any other: refused before the
-    # borrow starts rather than half way through restoring it (§5.7).
+    # borrow starts rather than half way through restoring it (sec. 5.7).
     Assert-CanSend 'before the paste'
     # Typing goes through SendInput one character at a time, which some editors and
     # every IME-hostile app mangle; a paste is one atomic gesture and is the only
     # reliable way to move a long or non-ASCII string into a control. The user's own
-    # clipboard is borrowed first and put back afterwards (8.txt §6):
+    # clipboard is borrowed first and put back afterwards (8.txt sec. 6):
     #
     #   verify the receiver -> read the clipboard's formats and the content that can be
     #   restored -> record the sequence number -> write the text -> record the sequence
@@ -5827,13 +5972,13 @@ function Do-Paste([object]$Arg) {
     return $receipt
 }
 
-# ---------------------------------------------------------------- app discovery (§9)
+# ---------------------------------------------------------------- app discovery (sec. 9)
 #
 # Naming an application is fuzzy by nature ("the chat app"), and the signals that make a
 # guess good are expensive to collect per call: a recursive Start-menu scan, the shell's own
 # app table, a process snapshot and a registry read. They are collected once, kept for a
 # bounded time, and refreshed on request -- never per candidate, and never with one
-# `Get-ItemProperty` per item (which §9 names as the way to spend more on the interpreter
+# `Get-ItemProperty` per item (which sec. 9 names as the way to spend more on the interpreter
 # than the answer is worth).
 
 $script:AppDiscovery = @{
@@ -5871,7 +6016,7 @@ function Get-AppDiscovery([bool]$refresh = $false) {
     if ($refresh -or $null -eq $state.usage -or ($now - $state.usageAt).TotalSeconds -gt 120) {
         # One batched read of the whole key. The values are per-application switch counts the
         # shell keeps; a value that is not a number is left out rather than counted as zero
-        # (§9: missing must read as unknown, not as "never used").
+        # (sec. 9: missing must read as unknown, not as "never used").
         $usage = @{}
         $known = $false
         try {
@@ -5897,7 +6042,7 @@ function Get-AppDiscovery([bool]$refresh = $false) {
 
 function Get-RunningProcessMap {
     # name (lower-case, no extension) -> pids. Cached for a couple of seconds: `isRunning` is
-    # worth having, and one Get-Process per candidate is the per-item cost §9 warns about.
+    # worth having, and one Get-Process per candidate is the per-item cost sec. 9 warns about.
     $now = [DateTime]::UtcNow
     $state = $script:AppDiscovery
     if ($null -ne $state.processes -and ($now - $state.processesAt).TotalSeconds -lt 2.5) { return $state.processes }
@@ -5933,7 +6078,7 @@ function Get-NameMatchScore([string]$name, [string]$target) {
 function Get-AppUsageCountFor([string]$exeName, [string]$label, $discovery) {
     # The switch count the shell keeps for this application, when it keeps one. "Unknown" is
     # returned as unknown: the registry may not have the key, may not have this app, or may
-    # hold a value this build cannot read, and none of those mean "never used" (§9).
+    # hold a value this build cannot read, and none of those mean "never used" (sec. 9).
     $result = @{ count = 0; known = $false }
     if ($null -eq $discovery.usage -or -not $discovery.usageKnown) { return $result }
     $keys = @()
@@ -5951,7 +6096,7 @@ function Get-AppUsageCountFor([string]$exeName, [string]$label, $discovery) {
 }
 
 function Add-LaunchSignals($resolution, [string]$basis, [bool]$refresh = $false) {
-    # What §9 asks a candidate to carry: the true source type (kept, not flattened away), the
+    # What sec. 9 asks a candidate to carry: the true source type (kept, not flattened away), the
     # current running state, the usage history when there is one, and how it matched.
     $discovery = Get-AppDiscovery $refresh
     $processes = Get-RunningProcessMap
@@ -5981,7 +6126,7 @@ function Resolve-LaunchTarget([string]$target, [bool]$refresh = $false) {
     # An app is named in whatever way the user knows it: a path, an executable on PATH, a
     # Start-menu entry's display name, or an installed (Store/UWP) app.
     #
-    # The order is §9's: an explicit path or an exact name first, then name relevance, and
+    # The order is sec. 9's: an explicit path or an exact name first, then name relevance, and
     # only then whether it is running and what the shell remembers being used -- those two
     # break ties, they never make the decision on their own.
     if (Test-Path -LiteralPath $target) {
@@ -6032,7 +6177,7 @@ function Resolve-LaunchTarget([string]$target, [bool]$refresh = $false) {
     $best = $ranked[0]
     # A name tie the signals could not break is reported, not guessed. "'Chat' matching both
     # 'Chat' and 'Chat (work)'" is exactly the case where picking the usually-busy one is how
-    # the wrong application gets launched (§9: never assume the most used app is the intent).
+    # the wrong application gets launched (sec. 9: never assume the most used app is the intent).
     $tied = @($ranked | Where-Object {
         [int]$_['score'] -eq [int]$best['score'] -and
         [bool]$_['isRunning'] -eq [bool]$best['isRunning'] -and
@@ -6159,10 +6304,10 @@ function Do-Launch([object]$Arg) {
 
     $started = Get-Date
     $proc = $null
-    # 启动前把「会让 Electron 变成 Node」的变量从本进程环境里临时摘掉：worker 由 Agent 会话
-    # 派生，环境里带着 ELECTRON_RUN_AS_NODE=1，照抄给子进程就会让聊天客户端/编辑器这类
-    # Electron 应用静默退出（exit 0、无窗口）——表现成「启动成功了但什么都没出现」。
-    # 启动完立刻恢复，不影响 worker 自己的后续行为。
+    # Before launching, temporarily strip the "would turn Electron into Node" variables from this process's environment: the worker is spawned by the Agent session
+    # and carries ELECTRON_RUN_AS_NODE=1; copying it into the child makes Electron apps like chat clients and editors
+    # exit silently (exit 0, no window) -- which looks like "the launch succeeded but nothing appeared".
+    # Restored right after the launch, with no effect on the worker's own later behavior.
     $launchEnvSaved = @{}
     foreach ($envName in @('ELECTRON_RUN_AS_NODE', 'ELECTRON_NO_ASAR', 'ELECTRON_NO_ATTACH_CONSOLE',
                            'ELECTRON_FORCE_WINDOW_MENU_BAR', 'NODE_OPTIONS', 'NODE_REPL_EXTERNAL_MODULE')) {
@@ -6258,7 +6403,7 @@ function Do-Launch([object]$Arg) {
         matchedBy  = $how
         note       = $note
     }
-    # B4 (§9): which way the target was found, whether it was already running, what the shell
+    # B4 (sec. 9): which way the target was found, whether it was already running, what the shell
     # remembers about how often it has been used, and the candidates that lost. None of these
     # decides the launch -- they are what lets the caller see that the fuzzy match it got is
     # the one it meant.
@@ -6460,7 +6605,7 @@ function Get-ComUiTree([int64]$hwnd, [int]$maxDepth, [int]$maxNodes, [bool]$prob
         [DshUia.Engine]::Find($hwnd, $maxNodes, $probePatterns, $wantName, $wantType, $wantId, $wantFilter, [ref]$rows, [ref]$truncated)
         # A search that finds nothing and a client that cannot answer look the same from here,
         # so the client is asked again before the empty answer is believed -- if the read has
-        # budget left for another traversal (§7.4 第 5 条).
+        # budget left for another traversal (sec. 7.4 item 5).
         if ((@($rows)).Count -eq 0 -and (Test-WalkAllowed $ledger)) {
             Add-HealthProbe $ledger
             if (-not [DshUia.Engine]::ClientHealthy($hwnd)) {
@@ -6478,7 +6623,7 @@ function Get-ComUiTree([int64]$hwnd, [int]$maxDepth, [int]$maxNodes, [bool]$prob
             skipped   = 0
             mode      = 'find'
             reinit    = $reinit
-            # §7.4 第 3 条: which conditions the C# find handed to the provider. Computed from
+            # sec. 7.4 item 3: which conditions the C# find handed to the provider. Computed from
             # the same inputs and with the same helper the C# uses, so the report cannot drift
             # from what actually happened.
             pushdown  = @(
@@ -6486,7 +6631,7 @@ function Get-ComUiTree([int64]$hwnd, [int]$maxDepth, [int]$maxNodes, [bool]$prob
                 elseif ([DshUia.Engine]::IsExactControlType($wantType)) { 'controlType' }
             )
             # A search enumerates on the provider's side, so there is no client-side walk to
-            # count -- said out loud rather than reported as "visited nothing" (§7.4 第 2 条).
+            # count -- said out loud rather than reported as "visited nothing" (sec. 7.4 item 2).
             traversal = [ordered]@{
                 visited = 0; maxQueue = 0; visitBudget = 0; traversalTruncated = $false; elapsedMs = 0; providerSide = $true
                 walks = [int]$ledger.Walks; healthProbes = [int]$ledger.HealthProbes; resets = [int]$ledger.Resets; walkCap = [int]$ledger.Cap
@@ -6534,8 +6679,8 @@ function Get-ComUiTree([int64]$hwnd, [int]$maxDepth, [int]$maxNodes, [bool]$prob
         mode      = 'tree'
         reinit    = $reinit
         legacy    = $legacy
-        # §7.4 第 2 条: what the walk cost, separately from what it returned.
-        # §7.4 第 5 条: and how many traversals this one read took in total, so a retry chain
+        # sec. 7.4 item 2: what the walk cost, separately from what it returned.
+        # sec. 7.4 item 5: and how many traversals this one read took in total, so a retry chain
         # cannot become invisible work.
         traversal = [ordered]@{
             visited           = [int]$walked
@@ -6575,7 +6720,7 @@ function Test-LegacyBridgeRows($rows) {
 }
 
 function Get-VisitBudget([int]$maxNodes, $explicit) {
-    # How many nodes the traversal may *visit* (§7.4 第 2 条), which is a different question
+    # How many nodes the traversal may *visit* (sec. 7.4 item 2), which is a different question
     # from how many rows it may return.
     #
     # A caller that names `max_visited` gets exactly that, with 0 meaning "no limit". Without
@@ -6597,7 +6742,7 @@ function New-WalkLedger {
     # One read used to be able to traverse the same window several times over: the walk itself,
     # a re-walk after an in-process client re-creation, a second re-walk when the bridge rows
     # looked legacy, plus two client-health probes -- and then the *host* may restart the whole
-    # worker and repeat the read on top of that (§7.4 第 5 条: 控制重试总量). Each of those is
+    # worker and repeat the read on top of that (sec. 7.4 item 5: cap the total retries). Each of those is
     # a full traversal of a window that may be large, so they are counted in one place and
     # bounded, instead of being added one at a time by whoever needs another retry.
     return [pscustomobject]@{
@@ -7089,7 +7234,7 @@ function New-TreeDelta($nodes, $entries, [string]$base) {
         # The key the registration just minted, so the two sides of the comparison are
         # built by exactly the same rule. A supplied reading may carry the key itself,
         # which is what makes this function testable on trees that never came from a
-        # window (see Do-Delta).
+        # window.
         $key = ''
         if ("$($node['key'])" -ne '') { $key = "$($node['key'])" }
         elseif ("$($node['ref'])" -ne '') {
@@ -7203,7 +7348,7 @@ function Complete-UiTree($payload, [bool]$register, [bool]$prune = $true, [strin
 }
 
 # ---------------------------------------------------------------------------
-# Text observation (8.txt §5 / B1)
+# Text observation (8.txt sec. 5 / B1)
 #
 # One state read can carry the text a caller would otherwise spend a second call on:
 # what the focused control says, what is selected inside it, and -- only when asked
@@ -7279,7 +7424,7 @@ function Get-TextObservationConfig($spec) {
 
 function New-TextBudget($Arg) {
     # One budget for every text field in this read. Defaults are the engineering values of
-    # §5; the cap is what keeps a caller from asking for a 100 000-character document one
+    # sec. 5; the cap is what keeps a caller from asking for a 100 000-character document one
     # call at a time.
     $max = $script:TextBudgetDefault
     $requested = Get-ArgMember $Arg 'maxTextChars'
@@ -7397,14 +7542,14 @@ function Get-UiaElementValueText($el) {
 }
 
 function Format-UiaElementLine($el) {
-    # The same "Type · Name" line the tree rows read as, so a focused control named in the
+    # The same "Type - Name" line the tree rows read as, so a focused control named in the
     # text block is recognisably the same row the caller saw in the tree.
     try {
         $info = $el.Current
         $type = "$($info.ControlType.ProgrammaticName)".Replace('ControlType.', '')
         $name = "$($info.Name)"
         if ($name -eq '') { return $type }
-        return "$type · $name"
+        return "$type - $name"
     } catch { return '' }
 }
 
@@ -7613,7 +7758,7 @@ function Resolve-TextTarget($Arg, [int64]$Hwnd, $Rows) {
 }
 
 function Get-UiaTextObservationManaged($Arg, [int64]$Hwnd, $Rows, $config) {
-    # The managed implementation of the same block (§5 asks for both engines). It is the
+    # The managed implementation of the same block (sec. 5 asks for both engines). It is the
     # fallback for a host where the COM client is unavailable: on the windows the COM client
     # reads natively the managed one can answer through the MSAA bridge instead, which is a
     # different tree and not a substitute for it.
@@ -7651,7 +7796,7 @@ function Get-UiaTextObservationManaged($Arg, [int64]$Hwnd, $Rows, $config) {
         if ("$($observation['target']['ref'])" -ne '') { $entry['ref'] = "$($observation['target']['ref'])" }
         $summary = Format-UiaElementLine $el
         $value = Get-UiaElementValueText $el
-        if ($null -ne $value -and $value -ne '') { $summary = "$summary · 值: $value" }
+        if ($null -ne $value -and $value -ne '') { $summary = "$summary - value: $value" }
         if ($summary -eq '') { $summary = 'the focused control reports no accessible name' }
         $cap = $script:FocusedSummaryDefault
         if ($script:FocusedSummaryMax -lt $cap) { $cap = $script:FocusedSummaryMax }
@@ -8048,11 +8193,337 @@ function Add-TextObservation($reply, $Arg, [int64]$Hwnd, [string]$engine, [int]$
     if ($null -eq $reply) { return $reply }
     $observation = Get-UiaTextObservation $Arg $Hwnd @($reply.nodes) $engine $windowPid
     if ($null -ne $observation) { $reply['text'] = $observation }
+    # NEW-P1-03: OCR rides the same read as one extra field; not asked for = one null check.
+    $reply = Add-OcrObservation $reply $Arg $Hwnd
+    return $reply
+}
+
+# ---------------------------------------------------------------------------
+# NEW-P1-03 OCR text observation
+#
+# What this is: when the accessibility tree cannot say what a window *says* (an
+# owner-drawn canvas, a remote-desktop surface, a game), the pixels on screen can
+# still be read. The six rules this implementation lives by:
+#   1. lazy load        -- nothing below is compiled or loaded until a caller
+#                          actually asks for `ocr`; a worker that never sees the
+#                          argument pays nothing and cannot fail on it.
+#   2. never a frame    -- the bitmap is copied from the screen into memory,
+#                          read, and disposed. It is never registered as a frame,
+#                          never written to disk, never offered to `see`.
+#   3. only unverified  -- any failure reports status 'unverified' with a
+#                          reason; it never throws into the observation and never
+#                          fails the read it rode on.
+#   4. chain points     -- a hit point for a line of text comes from the same
+#                          clickable-point fallback chain (P1-05) that
+#                          click_text uses, in its read-only form
+#                          (Get-ClickPointCandidates); a line whose chain finds
+#                          nothing simply has no point.
+#   5. not a tool       -- this rides the existing ui observation as one extra
+#                          field (`ocr`); no new action, no new handler.
+#   6. marked           -- every level of the answer says it is unverified: the
+#                          block, every line, every word.
+# ---------------------------------------------------------------------------
+
+$script:OcrState = $null          # $null = never tried; filled by Get-OcrEngineState
+$script:OcrEngineByTag = @{}      # language tag -> created engine ($null = known unsupported)
+
+function Get-OcrObservationConfig($spec) {
+    # $null / $false = not asked for -- the default, and what keeps this free.
+    # $true asks with defaults; a string is a language tag ('zh-Hans-CN'); an
+    # object may tune it:
+    #   language / lang   one tag or an array of tags; the first supported wins
+    #                     (default: the user profile languages)
+    #   maxLines          cap on returned lines (default 40, hard cap 200)
+    #   points            $false skips the clickable-point lookup per line
+    if ($null -eq $spec -or $spec -eq $false) { return $null }
+    $config = [ordered]@{ language = $null; maxLines = 40; points = $true }
+    if ($spec -is [string]) {
+        if ($spec -eq 'true' -or $spec -eq '') { return $config }
+        $config.language = $spec
+        return $config
+    }
+    if ($spec -is [bool]) { if ($spec) { return $config } else { return $null } }
+    $lang = Get-ArgMember $spec 'language'
+    if ($null -eq $lang) { $lang = Get-ArgMember $spec 'lang' }
+    if ($null -ne $lang) { $config.language = $lang }
+    $maxLines = Get-ArgMember $spec 'maxLines'
+    if ($null -eq $maxLines) { $maxLines = Get-ArgMember $spec 'max_lines' }
+    if ($null -ne $maxLines) { $config.maxLines = [Math]::Max(1, [Math]::Min(200, [int]$maxLines)) }
+    $points = Get-ArgMember $spec 'points'
+    if ($points -eq $false) { $config.points = $false }
+    return $config
+}
+
+function Get-OcrEngineState {
+    # Rule 1: this is the only place the WinRT types are touched, and it runs at
+    # the first actual request. The answer -- ready or not -- is cached, so a
+    # machine without an OCR pack pays one cheap probe, not one per read. On
+    # pwsh 7 (no WinRT projection) the load itself throws; that is a cached
+    # 'unverified' too, and the rest of the worker never notices.
+    if ($null -ne $script:OcrState) { return $script:OcrState }
+    $state = [ordered]@{ ready = $false; reason = ''; engine = $null; asTask = $null; language = '' }
+    try {
+        [void]([Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime])
+        [void]([Windows.Graphics.Imaging.SoftwareBitmap, Windows.Foundation, ContentType = WindowsRuntime])
+        [void]([Windows.Globalization.Language, Windows.Foundation, ContentType = WindowsRuntime])
+        Add-Type -AssemblyName System.Runtime.WindowsRuntime
+        $asTaskGeneric = @([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+            $_.Name -eq 'AsTask' -and $_.IsGenericMethodDefinition -and
+            $_.GetParameters().Count -eq 1 -and
+            $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+        if ($null -eq $asTaskGeneric) { throw 'System.Runtime.WindowsRuntime has no AsTask for IAsyncOperation<T>' }
+        $state.asTask = $asTaskGeneric.MakeGenericMethod([Windows.Media.Ocr.OcrResult])
+        $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+        if ($null -eq $engine) { throw 'no OCR recognizer is installed for the user profile languages' }
+        $state.engine = $engine
+        $state.language = [string]$engine.RecognizerLanguage.LanguageTag
+        $state.ready = $true
+    } catch {
+        $state.reason = "$($_.Exception.Message)"
+        $state.ready = $false
+        $state.engine = $null
+    }
+    $script:OcrState = $state
+    return $script:OcrState
+}
+
+function Get-OcrEngineFor($config) {
+    # The engine for this request: the profile one by default, a per-language one
+    # when the caller named tags. Engines are cached by tag; a tag known to be
+    # unsupported is cached as $null so it is not re-probed every read.
+    $state = Get-OcrEngineState
+    if (-not $state.ready) { return @{ ok = $false; reason = $state.reason } }
+    $tags = @()
+    if ($null -ne $config.language) { $tags = @($config.language) }
+    if ($tags.Count -eq 0) { return @{ ok = $true; engine = $state.engine; language = $state.language; asTask = $state.asTask } }
+    foreach ($tag in $tags) {
+        $tagText = "$tag"
+        if ($script:OcrEngineByTag.ContainsKey($tagText)) {
+            $cached = $script:OcrEngineByTag[$tagText]
+            if ($null -ne $cached) { return @{ ok = $true; engine = $cached; language = $tagText; asTask = $state.asTask } }
+            continue
+        }
+        try {
+            $lang = New-Object Windows.Globalization.Language -ArgumentList $tagText
+            if ([Windows.Media.Ocr.OcrEngine]::IsLanguageSupported($lang)) {
+                $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($lang)
+                if ($null -ne $engine) {
+                    $script:OcrEngineByTag[$tagText] = $engine
+                    return @{ ok = $true; engine = $engine; language = $tagText; asTask = $state.asTask }
+                }
+            }
+            $script:OcrEngineByTag[$tagText] = $null
+        } catch {
+            $script:OcrEngineByTag[$tagText] = $null
+        }
+    }
+    return @{ ok = $false; reason = "none of the requested languages has an installed OCR recognizer ($($tags -join ', '))" }
+}
+
+function ConvertTo-OcrSoftwareBitmap([System.Drawing.Bitmap]$bitmap) {
+    # Format32bppArgb memory layout is B,G,R,A little-endian -- exactly Bgra8.
+    # Alpha is garbage out of CopyFromScreen, so the software bitmap ignores it.
+    $rect = New-Object System.Drawing.Rectangle(0, 0, $bitmap.Width, $bitmap.Height)
+    $data = $bitmap.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    try {
+        $len = [Math]::Abs($data.Stride) * $bitmap.Height
+        $bytes = New-Object byte[] $len
+        [System.Runtime.InteropServices.Marshal]::Copy($data.Scan0, $bytes, 0, $len)
+    } finally { $bitmap.UnlockBits($data) }
+    $buffer = [System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions]::AsBuffer($bytes, 0, $bytes.Length)
+    return [Windows.Graphics.Imaging.SoftwareBitmap]::CreateCopyFromBuffer(
+        $buffer,
+        [Windows.Graphics.Imaging.BitmapPixelFormat]::Bgra8,
+        $bitmap.Width, $bitmap.Height,
+        [Windows.Graphics.Imaging.BitmapAlphaMode]::Ignore)
+}
+
+function Get-OcrObservation($Arg, [int64]$Hwnd, $config) {
+    # The whole OCR block of one read. Whatever goes wrong in here becomes a
+    # 'unverified' block with a reason (rule 3); this function has no throw path.
+    $started = [System.Diagnostics.Stopwatch]::StartNew()
+    $block = [ordered]@{
+        status     = 'unverified'    # rules 3 and 6: OCR output is never claimed to be right
+        verified   = $false
+        note       = 'OCR text is unverified: recognized from screen pixels and may differ from actual content; rect/point are desktop coordinates; point already passed the clickable-point fallback chain.'
+        engine     = 'windows.media.ocr'
+        language   = ''
+        region     = $null
+        downscaled = $false
+        textFound  = $false
+        lineCount  = 0
+        truncated  = $false
+        lines      = @()
+        elapsedMs  = 0
+    }
+    try {
+        $picked = Get-OcrEngineFor $config
+        if (-not $picked.ok) {
+            $block.reason = "ocr engine unavailable: $($picked.reason)"
+            $block.elapsedMs = [int]$started.ElapsedMilliseconds
+            return $block
+        }
+        $block.language = [string]$picked.language
+
+        # Where to read: the window's bounds, or the whole virtual desktop when
+        # the read was not aimed at a window. CopyFromScreen can only read what
+        # is on the desktop, so the region is clamped to it.
+        $region = $null
+        if ($Hwnd -ne 0) {
+            if ([DshNative]::IsIconic([IntPtr]$Hwnd)) {
+                $block.reason = 'the window is minimized; there are no pixels to read'
+                $block.elapsedMs = [int]$started.ElapsedMilliseconds
+                return $block
+            }
+            $region = Get-WindowRectInfo ([IntPtr]$Hwnd)
+            if ($null -eq $region) {
+                $block.reason = 'the window has no readable bounds'
+                $block.elapsedMs = [int]$started.ElapsedMilliseconds
+                return $block
+            }
+        } else {
+            $region = Get-VirtualBounds
+        }
+        $vb = Get-VirtualBounds
+        $ix = [Math]::Max([int]$region.x, [int]$vb.x)
+        $iy = [Math]::Max([int]$region.y, [int]$vb.y)
+        $ix2 = [Math]::Min([int]$region.x + [int]$region.width, [int]$vb.x + [int]$vb.width)
+        $iy2 = [Math]::Min([int]$region.y + [int]$region.height, [int]$vb.y + [int]$vb.height)
+        if (($ix2 -le $ix) -or ($iy2 -le $iy)) {
+            $block.reason = 'the window is entirely off the desktop; there are no pixels to read'
+            $block.elapsedMs = [int]$started.ElapsedMilliseconds
+            return $block
+        }
+        $region = [ordered]@{ x = $ix; y = $iy; width = ($ix2 - $ix); height = ($iy2 - $iy) }
+        $block.region = $region
+
+        # Rule 2: the bitmap lives in this function's stack frame only -- it is
+        # never registered as a frame, never written to disk, and disposed in
+        # the finally below.
+        $bitmap = $null
+        $software = $null
+        try {
+            $bitmap = New-Object System.Drawing.Bitmap([int]$region.width, [int]$region.height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            try {
+                $graphics.CopyFromScreen([int]$region.x, [int]$region.y, 0, 0, $bitmap.Size, [System.Drawing.CopyPixelOperation]::SourceCopy)
+            } finally { $graphics.Dispose() }
+
+            # The engine refuses bitmaps past MaxImageDimension: shrink for the
+            # read, scale the reported rectangles back up, and say it happened.
+            $scaleBack = 1.0
+            $maxDim = [int][Windows.Media.Ocr.OcrEngine]::MaxImageDimension
+            $long = [Math]::Max($bitmap.Width, $bitmap.Height)
+            if ($maxDim -gt 0 -and $long -gt $maxDim) {
+                $factor = $maxDim / [double]$long
+                $nw = [Math]::Max(1, [int][Math]::Floor($bitmap.Width * $factor))
+                $nh = [Math]::Max(1, [int][Math]::Floor($bitmap.Height * $factor))
+                $resized = New-Object System.Drawing.Bitmap($nw, $nh, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+                $g2 = [System.Drawing.Graphics]::FromImage($resized)
+                try {
+                    $g2.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                    $g2.DrawImage($bitmap, 0, 0, $nw, $nh)
+                } finally { $g2.Dispose() }
+                $bitmap.Dispose()
+                $bitmap = $resized
+                $scaleBack = 1.0 / $factor
+                $block.downscaled = $true
+            }
+
+            $software = ConvertTo-OcrSoftwareBitmap $bitmap
+            $operation = $picked.engine.RecognizeAsync($software)
+            $task = $picked.asTask.Invoke($null, [object[]]@($operation))
+            # GetAwaiter().GetResult() rethrows the original failure instead of
+            # an AggregateException wrapper, so the reason stays readable.
+            $result = $task.GetAwaiter().GetResult()
+
+            $lines = New-Object System.Collections.Generic.List[object]
+            $total = 0
+            foreach ($line in $result.Lines) {
+                $total += 1
+                if ($lines.Count -ge [int]$config.maxLines) { continue }
+                $lx = $null; $ly = $null; $lx2 = $null; $ly2 = $null
+                $words = New-Object System.Collections.Generic.List[object]
+                $wordCount = 0
+                foreach ($word in $line.Words) {
+                    $wordCount += 1
+                    $br = $word.BoundingRect
+                    if ($null -eq $lx) {
+                        $lx = [double]$br.X; $ly = [double]$br.Y
+                        $lx2 = [double]$br.X + [double]$br.Width; $ly2 = [double]$br.Y + [double]$br.Height
+                    } else {
+                        $lx = [Math]::Min($lx, [double]$br.X); $ly = [Math]::Min($ly, [double]$br.Y)
+                        $lx2 = [Math]::Max($lx2, [double]$br.X + [double]$br.Width); $ly2 = [Math]::Max($ly2, [double]$br.Y + [double]$br.Height)
+                    }
+                    if ($words.Count -lt 40) {
+                        $wx = [int]$region.x + [int][Math]::Round([double]$br.X * $scaleBack)
+                        $wy = [int]$region.y + [int][Math]::Round([double]$br.Y * $scaleBack)
+                        $words.Add([ordered]@{
+                            text     = [string]$word.Text
+                            verified = $false
+                            rect     = [ordered]@{
+                                x = $wx; y = $wy
+                                width  = [Math]::Max(1, [int][Math]::Round([double]$br.Width * $scaleBack))
+                                height = [Math]::Max(1, [int][Math]::Round([double]$br.Height * $scaleBack))
+                            }
+                        })
+                    }
+                }
+                if ($null -eq $lx) { continue }
+                $rx = [int]$region.x + [int][Math]::Round($lx * $scaleBack)
+                $ry = [int]$region.y + [int][Math]::Round($ly * $scaleBack)
+                $rw = [Math]::Max(1, [int][Math]::Round(($lx2 - $lx) * $scaleBack))
+                $rh = [Math]::Max(1, [int][Math]::Round(($ly2 - $ly) * $scaleBack))
+                $entry = [ordered]@{
+                    text      = [string]$line.Text
+                    verified  = $false
+                    rect      = [ordered]@{ x = $rx; y = $ry; width = $rw; height = $rh }
+                    point     = $null
+                    wordCount = $wordCount
+                    words     = @($words)
+                }
+                # Rule 4: a hit point comes from the same fallback chain a
+                # click_text click walks -- read-only, so nothing is sent. A
+                # desktop-wide read has no window to guard against, so its
+                # lines carry no points.
+                if ($config.points -and $Hwnd -ne 0) {
+                    $chain = Get-ClickPointCandidates ([int64]$Hwnd) $rx $ry $rw $rh $null
+                    if ($chain.ok) {
+                        $entry.point = [ordered]@{ x = [int]$chain.point.x; y = [int]$chain.point.y; level = [string]$chain.point.level }
+                    }
+                }
+                $lines.Add($entry)
+            }
+            $block.lineCount = $total
+            $block.truncated = ($total -gt $lines.Count)
+            $block.textFound = ($total -gt 0)
+            $block.lines = @($lines)
+        } finally {
+            if ($null -ne $software) { $software.Dispose() }
+            if ($null -ne $bitmap) { $bitmap.Dispose() }
+        }
+        $block.elapsedMs = [int]$started.ElapsedMilliseconds
+        return $block
+    } catch {
+        $block.reason = "ocr read failed: $($_.Exception.Message)"
+        $block.elapsedMs = [int]$started.ElapsedMilliseconds
+        return $block
+    }
+}
+
+function Add-OcrObservation($reply, $Arg, [int64]$Hwnd) {
+    # The hook next to Add-TextObservation: a read that did not ask for OCR gets
+    # nothing bolted on -- and pays exactly one null check (rule 1). Everything
+    # past the config check is inside Get-OcrObservation's no-throw shell.
+    if ($null -eq $reply) { return $reply }
+    $config = Get-OcrObservationConfig (Get-ArgMember $Arg 'ocr')
+    if ($null -eq $config) { return $reply }
+    $reply['ocr'] = Get-OcrObservation $Arg $Hwnd $config
     return $reply
 }
 
 function Get-UiTreeSpec($Arg) {
-    # One normalization entry for a read (§9: `Do-UiTree` 内重复参数初始化，合并为一个规范化入口).
+    # One normalization entry for a read (sec. 9: the repeated parameter initialization inside Do-UiTree, merged into one normalization entry).
     #
     # The defaults used to be spelled out twice inside `Do-UiTree` -- once before the COM branch
     # and once inside the managed one -- so a change to a default had to be made in two places
@@ -8137,14 +8608,14 @@ function Do-UiTree([object]$Arg, [bool]$register = $true) {
             # client had to be re-created to get it. (This is where they were being lost.)
             legacy    = [bool]$result.legacy
             reinit    = [bool]$result.reinit
-            # §7.4 第 1 条: how many pattern properties the COM cache request asked for. The
+            # sec. 7.4 item 1: how many pattern properties the COM cache request asked for. The
             # COM engine builds its own cache request, so the number comes from the same
             # pattern table this plugin asks the provider to fill.
             cachePatterns = $(if ($probePatterns) { [int]@(Get-UiaPatternSpecs).Count } else { 0 })
-            # §7.4 第 3 条: the conditions the search pushed down, carried through from the
+            # sec. 7.4 item 3: the conditions the search pushed down, carried through from the
             # engine so "this was a smaller enumeration" is a fact in the reply.
             pushdown  = @($result.pushdown)
-            # §7.4 第 2 条: what the walk cost, told apart from what it returned.
+            # sec. 7.4 item 2: what the walk cost, told apart from what it returned.
             traversal = $result.traversal
         }) $register $pruneRows $sinceArg
         return (Add-TextObservation $comReply $Arg ([int64]$targetHwnd) 'com' ([int]$windowInfo.pid))
@@ -8189,11 +8660,11 @@ function Do-UiTree([object]$Arg, [bool]$register = $true) {
     $wantFilter = [string]$Arg.filter
     $findMode = ($wantName -ne '') -or ($wantType -ne '') -or ($wantId -ne '') -or ($wantFilter -ne '')
     # The read's flags and budgets come from the single normalization entry above, so the
-    # managed branch cannot drift from the COM one (§9).
+    # managed branch cannot drift from the COM one (sec. 9).
     $walked = 0
     $skipped = 0
 
-    # §7.4 第 1 条: the cache request asks for pattern properties only when this read wants
+    # sec. 7.4 item 1: the cache request asks for pattern properties only when this read wants
     # patterns, so `patterns: false` is cheaper and not merely shorter.
     $cache = New-UiaCacheRequest $probePatterns
     if ($probePatterns) { $specs = Get-UiaPatternSpecs } else { $specs = @() }
@@ -8204,7 +8675,7 @@ function Do-UiTree([object]$Arg, [bool]$register = $true) {
             # Returning only the matches is both faster and far smaller than dumping
             # a whole tree for the model to read.
             #
-            # §7.4 第 3 条: a condition is pushed down only when the push-down is *equivalent*.
+            # sec. 7.4 item 3: a condition is pushed down only when the push-down is *equivalent*.
             # `AutomationId` is exact by definition. A control type is pushed down only when the
             # caller named one in full -- the line below still matches a partial type with a
             # substring test, and an exact provider condition would drop rows that test accepts.
@@ -8283,7 +8754,7 @@ function Do-UiTree([object]$Arg, [bool]$register = $true) {
                     })
                 } catch { continue }
             }
-            # The find path finishes exactly like the tree path and like the COM engine (§6: the
+            # The find path finishes exactly like the tree path and like the COM engine (sec. 6: the
             # managed lookup used to return its payload straight from here, so a managed *search*
             # produced no registered refs, no pruning, no delta against `since`, and no text
             # observation -- the same request answered differently depending on which engine
@@ -8301,14 +8772,14 @@ function Do-UiTree([object]$Arg, [bool]$register = $true) {
                 skipped   = [int]$skipped
                 legacy    = $false
                 reinit    = $false
-                # §7.4 第 1 条: what the traversal actually asked the provider for: 0 when the
+                # sec. 7.4 item 1: what the traversal actually asked the provider for: 0 when the
                 # caller said `patterns: false`, so the saving is a fact in the reply rather
                 # than something a reader has to trust.
                 cachePatterns = [int]$script:UiaCachePatterns
-                # §7.4 第 3 条: which conditions went to the provider instead of being filtered
+                # sec. 7.4 item 3: which conditions went to the provider instead of being filtered
                 # by hand afterwards, so "the search is a smaller enumeration" is verifiable.
                 pushdown = @($pushedDown)
-                # §7.4 第 2 条: the cost of the search, told apart from what it returned.
+                # sec. 7.4 item 2: the cost of the search, told apart from what it returned.
                 traversal = [ordered]@{ visited = [int]$walked; maxQueue = [int]$maxQueue; visitBudget = [int]$visitBudget; traversalTruncated = [bool]$traverseTruncated; elapsedMs = 0; providerSide = $true }
             }) $register $pruneRows $sinceArg
             return (Add-TextObservation $findReply $Arg ([int64]$rootHwnd) 'managed' ([int]$windowInfo.pid))
@@ -8324,7 +8795,7 @@ function Do-UiTree([object]$Arg, [bool]$register = $true) {
         $cached = $true
         $debugTrace = New-Object System.Collections.Generic.List[string]
         $queue = New-Object System.Collections.Queue
-        # §7.4 第 2 条: the output budget and the traversal budget are counted apart. The loop
+        # sec. 7.4 item 2: the output budget and the traversal budget are counted apart. The loop
         # stops on `$nodes.Count -ge $maxNodes` (rows kept) *or* on the visit budget (nodes
         # looked at), and says which one it was.
         $visitBudget = Get-VisitBudget $maxNodes $Arg.maxVisited
@@ -8473,7 +8944,7 @@ function Do-Health {
     # because both change what a capture will do and neither is visible from the host.
     $pacing = Get-PacingConfig
     $pendingWrite = Get-WriteStampInfo
-    # §7.4 item 7: what the COM boundary has created and released, so "does a long session
+    # sec. 7.4 item 7: what the COM boundary has created and released, so "does a long session
     # accumulate objects?" is answered by a number instead of by a guess. Only meaningful for
     # the COM engine; the managed one has no such objects to count.
     $comObjects = $null
@@ -8572,7 +9043,7 @@ function Get-UiaRoot([object]$Arg) {
 
 # The patterns worth reporting, paired with the label the tool returns. Reported
 # per node so the model can see what an element can actually do instead of guessing
-# an action and reading the refusal — the tree says what is possible, and the caller
+# an action and reading the refusal -- the tree says what is possible, and the caller
 # finds out by looking rather than by trying.
 #
 # `text` is TextPattern: with it an element's contents can be read as text and a
@@ -8602,7 +9073,7 @@ function New-UiaCacheRequest([bool]$withPatterns = $true) {
     # cross-process call: a 300-node walk costs ~2000 of them and takes 500-650 ms.
     # A cache request turns that into one bulk fetch per node (~190 ms measured).
     #
-    # The pattern properties are only asked for when the caller wants patterns (§7.4 第 1 条):
+    # The pattern properties are only asked for when the caller wants patterns (sec. 7.4 item 1):
     # every cached pattern is a cross-process fetch per node that a caller who asked for
     # `patterns: false` never sees, so requesting them "just in case" pays the whole cost of
     # the feature and keeps none of the benefit. The COM engine has taken `$withPatterns` all
@@ -8918,6 +9389,104 @@ function Get-ComUiAct([int64]$hwnd, [object]$Arg) {
     return [ordered]@{ action = $action; value = $value; truncated = $false; wrote = $wrote; matched = $node }
 }
 
+function Resolve-ClickPointChain([int64]$targetHwnd, [int]$rectX, [int]$rectY, [int]$rectW, [int]$rectH, [object]$node, [bool]$dispatch) {
+    # OPT-P1-05 clickable-point fallback chain: centre -> visible region -> container.
+    #
+    # click_text locates a *text range* and used to click its centre unconditionally:
+    # when the centre is not a place a click can land -- covered by another window,
+    # pushed off the desktop because the range is clipped, or refused by the desktop
+    # itself -- the action either hit whatever was covering it or failed outright,
+    # with nothing in between. The chain walks three candidate points in order:
+    #   centre          the range centre, as before;
+    #   visible-region  the centre of the part of the range that is actually on the
+    #                   desktop (a range clipped by the desktop edge still has one);
+    #   container       the centre of the element that owns the text -- the button
+    #                   around the label, which is often the live target when the
+    #                   text range itself is covered.
+    # Each candidate is verified *before* anything is sent: on the desktop, and
+    # landing on the window the text was located in (the same guard a from_frame
+    # click passes). A candidate that fails a check is skipped, never clicked; a
+    # candidate whose click is refused advances the chain. A cancel or a spent
+    # deadline stops the chain outright -- sending the next candidate is exactly
+    # what those two refusals exist to prevent.
+    #
+    # Returns @{ ok; point = @{ x; y; level }; attempts; error }. `attempts` records
+    # every level that was tried and why it was skipped or refused, so the caller can
+    # say what happened instead of "it failed". The level travels with the point: a
+    # click that did not land where a receipt points is a lie about the desktop.
+    #
+    # $dispatch = $true  clicks the first candidate that passes (the click_text
+    #                    behaviour, wrapped by Invoke-ClickPointChain);
+    # $dispatch = $false stops at the answer and sends nothing (wrapped by
+    #                    Get-ClickPointCandidates -- used by the NEW-P1-02 batch
+    #                    rehearsal and by NEW-P1-03 OCR hit points).
+    $candidates = New-Object System.Collections.Generic.List[object]
+    $candidates.Add([ordered]@{ x = $rectX + [int]($rectW / 2); y = $rectY + [int]($rectH / 2); level = 'centre' })
+    $vx = [DshNative]::GetSystemMetrics([DshNative]::SM_XVIRTUALSCREEN)
+    $vy = [DshNative]::GetSystemMetrics([DshNative]::SM_YVIRTUALSCREEN)
+    $vw = [DshNative]::GetSystemMetrics([DshNative]::SM_CXVIRTUALSCREEN)
+    $vh = [DshNative]::GetSystemMetrics([DshNative]::SM_CYVIRTUALSCREEN)
+    if ($vw -gt 0 -and $vh -gt 0) {
+        $ix = [Math]::Max($rectX, $vx)
+        $iy = [Math]::Max($rectY, $vy)
+        $ix2 = [Math]::Min($rectX + $rectW, $vx + $vw)
+        $iy2 = [Math]::Min($rectY + $rectH, $vy + $vh)
+        if (($ix2 -gt $ix) -and ($iy2 -gt $iy)) {
+            $candidates.Add([ordered]@{ x = $ix + [int](($ix2 - $ix) / 2); y = $iy + [int](($iy2 - $iy) / 2); level = 'visible-region' })
+        }
+    }
+    if ($null -ne $node -and $node.offscreen -ne $true -and [int]$node.width -gt 0 -and [int]$node.height -gt 0) {
+        $candidates.Add([ordered]@{ x = [int]$node.x + [int]([int]$node.width / 2); y = [int]$node.y + [int]([int]$node.height / 2); level = 'container' })
+    }
+    $targetPid = 0
+    if ($targetHwnd -ne 0) { [void][DshNative]::GetWindowThreadProcessId([IntPtr]$targetHwnd, [ref]$targetPid) }
+    $attempts = @()
+    $seen = @{}
+    foreach ($candidate in $candidates) {
+        $key = "$($candidate.x),$($candidate.y)"
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+        if (-not (Test-PointOnDesktop ([int]$candidate.x) ([int]$candidate.y))) {
+            $attempts += [ordered]@{ level = "$($candidate.level)"; x = [int]$candidate.x; y = [int]$candidate.y; refused = 'outside the virtual desktop' }
+            continue
+        }
+        $guard = Test-LandingGuard $targetHwnd $targetPid ([int]$candidate.x) ([int]$candidate.y) $null
+        if (-not $guard.ok) {
+            $attempts += [ordered]@{ level = "$($candidate.level)"; x = [int]$candidate.x; y = [int]$candidate.y; refused = "$($guard.reason)" }
+            continue
+        }
+        if (-not $dispatch) {
+            # Read-only mode: the first candidate that passes both checks is the
+            # answer; nothing is sent.
+            return [ordered]@{ ok = $true; point = [ordered]@{ x = [int]$candidate.x; y = [int]$candidate.y; level = "$($candidate.level)" }; attempts = $attempts }
+        }
+        try {
+            [void](Do-Click @{ x = [int]$candidate.x; y = [int]$candidate.y; button = 'left'; clicks = 1 })
+            return [ordered]@{ ok = $true; point = [ordered]@{ x = [int]$candidate.x; y = [int]$candidate.y; level = "$($candidate.level)" }; attempts = $attempts }
+        } catch {
+            $message = "$($_.Exception.Message)"
+            if ($message.StartsWith('[CANCELED]') -or $message.StartsWith('[DEADLINE_EXHAUSTED]')) { throw }
+            $attempts += [ordered]@{ level = "$($candidate.level)"; x = [int]$candidate.x; y = [int]$candidate.y; refused = $message }
+        }
+    }
+    $why = @($attempts | ForEach-Object { "$($_.level) ($($_.x),$($_.y)): $($_.refused)" }) -join '; '
+    $tail = 'accepted the click'
+    if (-not $dispatch) { $tail = 'would accept a click' }
+    return [ordered]@{ ok = $false; point = $null; attempts = $attempts; error = "no clickable point in the fallback chain $tail -- $why" }
+}
+
+function Invoke-ClickPointChain([int64]$targetHwnd, [int]$rectX, [int]$rectY, [int]$rectW, [int]$rectH, [object]$node) {
+    # The dispatching half of the chain -- exactly the behaviour click_text has
+    # always had. Kept under the old name so every existing caller is untouched.
+    return Resolve-ClickPointChain $targetHwnd $rectX $rectY $rectW $rectH $node $true
+}
+
+function Get-ClickPointCandidates([int64]$targetHwnd, [int]$rectX, [int]$rectY, [int]$rectW, [int]$rectH, [object]$node) {
+    # The read-only half: same candidates, same per-candidate checks, no click.
+    # Used by the NEW-P1-02 batch rehearsal and by NEW-P1-03 OCR hit points.
+    return Resolve-ClickPointChain $targetHwnd $rectX $rectY $rectW $rectH $node $false
+}
+
 function Do-UiAct([object]$Arg) {
     $action = "$($Arg.action)".ToLowerInvariant()
     if ([string]::IsNullOrWhiteSpace($action)) { throw "uiact requires an action" }
@@ -8983,28 +9552,44 @@ function Do-UiAct([object]$Arg) {
             if ($null -ne $matched -and $matched.Count -gt 0) { $node = @(ConvertFrom-ComRows $matched)[0] }
             $centreX = $rectX + [int]($rectW / 2)
             $centreY = $rectY + [int]($rectH / 2)
+            $clickedPoint = $null
             if ($action -eq 'click_text') {
-                try {
-                    [void](Do-Click @{ x = $centreX; y = $centreY; button = 'left'; clicks = 1 })
-                } catch {
+                # The centre is only the first candidate now: OPT-P1-05 walks the
+                # fallback chain (visible part of the range, then the owning element),
+                # each verified against the window the text was found in before
+                # anything is sent.
+                $chain = Invoke-ClickPointChain ([int64]$targetHwnd) $rectX $rectY $rectW $rectH $node
+                if (-not $chain.ok) {
                     # The locate half always works; the click half depends on the desktop
                     # accepting input. Losing the rectangle when the click is refused would
                     # throw away the half that succeeded, so it goes into the failure.
-                    throw "$($_.Exception.Message) -- the text was located at $centreX,$centreY ($($rectW)x$($rectH)); click that point with computer_click once input is available"
+                    throw "$($chain.error) -- the text was located at $centreX,$centreY ($($rectW)x$($rectH)); click that point with computer_click once input is available"
                 }
+                $clickedPoint = $chain.point
             }
             # click_text clicks, so it is a write and keeps the pace; locate_text only
             # looked, and sleeping after a look is the cost this build removes.
             if ($action -eq 'click_text' -and $script:ReadSettleMs -gt 0) { Wait-Cancellable $script:ReadSettleMs }
-            return [ordered]@{
+            $receipt = [ordered]@{
                 action     = $action
                 value      = $foundText
                 truncated  = $false
                 wrote      = ($action -eq 'click_text')
                 matched    = $node
                 foreground = (Get-ForegroundInfo)
-                rect       = [ordered]@{ x = $rectX; y = $rectY; width = $rectW; height = $rectH }
             }
+            # The host reads rect as "what was actually clicked". When the click
+            # landed on a fallback point rather than the range centre, naming the
+            # range would point at a place nothing was clicked -- so the rect is
+            # omitted and the real point travels in `clicked` (surfaced to the model
+            # once the host schema learns the field).
+            if ($null -eq $clickedPoint -or "$($clickedPoint.level)" -eq 'centre') {
+                $receipt.rect = [ordered]@{ x = $rectX; y = $rectY; width = $rectW; height = $rectH }
+            }
+            if ($null -ne $clickedPoint) {
+                $receipt.clicked = [ordered]@{ x = [int]$clickedPoint.x; y = [int]$clickedPoint.y; level = "$($clickedPoint.level)" }
+            }
+            return $receipt
         }
         if ($textAction) { $result = Get-ComUiTextAction ([int64]$targetHwnd) $Arg }
         else { $result = Get-ComUiAct ([int64]$targetHwnd) $Arg }
@@ -9039,6 +9624,7 @@ function Do-UiAct([object]$Arg) {
     $truncated = $false
     $wrote = $true
     $rect = $null
+    $clickedPoint = $null
     switch ($action) {
         'invoke' {
             $p = $null
@@ -9135,20 +9721,27 @@ function Do-UiAct([object]$Arg) {
         }
         'click_text' {
             # Address something by its text instead of by coordinates. The click goes
-            # through the same path computer_click uses, so the a11y-first rule and the
-            # SendInput guard apply here too.
+            # through the clickable-point fallback chain (OPT-P1-05), so the centre is
+            # tried first and the visible region / owning element follow if it cannot
+            # take a click.
             $located = Get-UiaTextRect $el $Arg
             $value = $located.text
-            $rect = [ordered]@{ x = $located.x; y = $located.y; width = $located.width; height = $located.height }
             $centreX = $located.x + [int]($located.width / 2)
             $centreY = $located.y + [int]($located.height / 2)
-            try {
-                [void](Do-Click @{ x = $centreX; y = $centreY; button = 'left'; clicks = 1 })
-            } catch {
+            $chain = Invoke-ClickPointChain ([int64]$targetHwnd) ([int]$located.x) ([int]$located.y) ([int]$located.width) ([int]$located.height) $before
+            if (-not $chain.ok) {
                 # The locate half always works; the click half depends on the desktop
                 # accepting input. Losing the rectangle when the click is refused would
                 # throw away the half that succeeded, so it goes into the failure.
-                throw "$($_.Exception.Message) -- the text was located at $centreX,$centreY ($($located.width)x$($located.height)); click that point with computer_click once input is available"
+                throw "$($chain.error) -- the text was located at $centreX,$centreY ($($located.width)x$($located.height)); click that point with computer_click once input is available"
+            }
+            $clickedPoint = $chain.point
+            # Same receipt rule as the COM path: rect is read by the host as the
+            # clicked place, so a fallback point replaces it with the real `clicked`.
+            if ("$($clickedPoint.level)" -eq 'centre') {
+                $rect = [ordered]@{ x = $located.x; y = $located.y; width = $located.width; height = $located.height }
+            } else {
+                $rect = $null
             }
         }
         'get_caret' { [void](Get-UiaCaret) }
@@ -9163,26 +9756,15 @@ function Do-UiAct([object]$Arg) {
     if ($wrote -and $script:ReadSettleMs -gt 0) { Wait-Cancellable $script:ReadSettleMs }
     $receipt = [ordered]@{ action = $action; value = $value; truncated = $truncated; wrote = $wrote; matched = $before; foreground = (Get-ForegroundInfo) }
     if ($null -ne $rect) { $receipt.rect = $rect }
+    if ($null -ne $clickedPoint) {
+        $receipt.clicked = [ordered]@{ x = [int]$clickedPoint.x; y = [int]$clickedPoint.y; level = "$($clickedPoint.level)" }
+    }
     return $receipt
 }
 
-function Do-Wait([object]$Arg) {
-    $seconds = 0.0
-    if ($null -ne $Arg.seconds) { $seconds = [double]$Arg.seconds }
-    if ($seconds -lt 0) { $seconds = 0 }
-    if ($seconds -gt 30) { $seconds = 30 }
-    # Sliced, so a cancel lands during the wait instead of after it: a 30 s wait is
-    # the longest single step a caller ever asks for, and the one it is most likely
-    # to be cancelling when it changes its mind.
-    if ($seconds -gt 0) {
-        Wait-Cancellable ([int]($seconds * 1000))
-        # A wait is an observation boundary: a frame taken before it is a picture of a moment
-        # the caller has just declared to be in the past. `wait: 0` (or a request that rounds
-        # to nothing) is not a boundary, and this is the same rule the batch's wait step uses.
-        [void](Advance-ObservationEpoch)
-    }
-    return [ordered]@{ seconds = $seconds }
-}
+# Cut-list item CUT-2: the standalone `wait` command (Do-Wait) is gone with its handler --
+# a wait lives on as a batch step (12-batching.ps1, same Wait-Cancellable + epoch
+# semantics) and as wait_for; the single-call sleep duplicated them.
 
 # ------------------------------------------------------- waiting for a condition
 #
@@ -9231,7 +9813,7 @@ function Get-WaitConditionSpec([object]$Arg) {
 }
 
 function Get-WaitConditionWeight([object]$Predicate) {
-    # 'light' or 'heavy', for the polling plan (§6.2). A window's existence or a file's state is a
+    # 'light' or 'heavy', for the polling plan (sec. 6.2). A window's existence or a file's state is a
     # cheap check that can be asked often; a control/value/text condition walks a UI Automation
     # tree, and a region condition reads and fingerprints pixels -- those start slower and back off
     # to a lower ceiling. A group inherits the heaviest leg, because the group is only as cheap as
@@ -9497,7 +10079,7 @@ function Test-ConditionText([object]$Predicate) {
 function Test-FileParseable([string]$path, [object]$item) {
     # Only the formats this backend can actually check are checked. Anything else is reported
     # as "not verifiable" rather than as a pass: a condition that says `true` about a file
-    # nobody read is worse than one that says it cannot tell (方案 §6.2 的"保留证据等级").
+    # nobody read is worse than one that says it cannot tell (the "keep the evidence grade" rule of plan doc sec. 6.2).
     $ext = ''
     try { $ext = [System.IO.Path]::GetExtension($path).ToLowerInvariant() } catch { $ext = '' }
     $size = [int64]$item.Length
@@ -9716,8 +10298,8 @@ function Test-ConditionGroup([object]$Predicate, [string]$mode) {
 }
 
 function Test-ConditionRegion([object]$Predicate) {
-    # A visual condition over a rectangle of the desktop (§6.2 "自绘界面" row: 目标区域语义变化、
-    # 视觉标识). It is the one completion condition that needs no cooperation from the application
+    # A visual condition over a rectangle of the desktop (sec. 6.2 "owner-drawn UI" row: a semantic change of the target region,
+    # a visual marker). It is the one completion condition that needs no cooperation from the application
     # at all -- it reads pixels.
     #
     # Three modes, each the weakest claim that answers the question:
@@ -9886,7 +10468,7 @@ function Wait-ForCondition([object]$Arg) {
     $currentPollMs = $pollMs
     while ($true) {
         Assert-NotCancelled 'during a condition wait'
-        # The budget is asked *before* the sample, not after it (§5.7). Sampling first meant a
+        # The budget is asked *before* the sample, not after it (sec. 5.7). Sampling first meant a
         # wait whose budget was already spent still made one observation -- and a satisfying
         # one reported `satisfied: true` for a call that had no time left to have observed it
         # (PS07). Nothing was watched in that case, and the report says so rather than claiming
@@ -9941,7 +10523,7 @@ function Wait-ForCondition([object]$Arg) {
     $status = 'false'
     if ($null -ne $last) { $status = "$($last.status)" }
     # Nothing was watched at all: the call had no budget left to watch with. That is not the
-    # statement "the condition is false", so it is reported as the third answer (§5.7/PS07).
+    # statement "the condition is false", so it is reported as the third answer (sec. 5.7/PS07).
     $watched = $null -ne $last
     if (-not $watched) { $status = 'unknown' }
     $budgetFrom = "$($spec.timeoutFrom)"
@@ -9999,7 +10581,7 @@ function Get-NodeLabel($node) {
 function Invoke-UiaStep([object]$step) {
     # A UI Automation action writes to the application just as a click does, so a *write* step
     # is refused once the call's budget is spent -- and a read step is not, because a read
-    # inside the budget is exactly what §5.7 asks to keep working while it lasts (§5.7, item 4).
+    # inside the budget is exactly what sec. 5.7 asks to keep working while it lasts (sec. 5.7, item 4).
     $stepAction = "$($step.action)".ToLowerInvariant()
     if ($WRITE_STEP_ACTIONS -contains $stepAction) { Assert-CanSend "before the '$stepAction' step" }
     # Maps a batch step onto the same code path computer_ui_action uses, so a whole
@@ -10115,7 +10697,7 @@ function Test-ExpectedTransition($declared, [object]$live) {
 }
 
 function New-CaptureArgs([hashtable]$Base, [object]$Step = $null, [hashtable]$Extra = $null) {
-    # One place where a capture request is assembled (§5.4).
+    # One place where a capture request is assembled (sec. 5.4).
     #
     # A batch builds these hashtables in two places -- a step's capture and the trailing one --
     # and the two had already drifted: a step's capture never carried `regionSpace` or `clip`
@@ -10156,7 +10738,7 @@ function New-CaptureArgs([hashtable]$Base, [object]$Step = $null, [hashtable]$Ex
 }
 
 function Test-SameCaptureSpec([hashtable]$A, [hashtable]$B) {
-    # Whether two capture requests are the same *picture* request (§7.3): the reuse rule is
+    # Whether two capture requests are the same *picture* request (sec. 7.3): the reuse rule is
     # "this frame may stand in for the one this call was asked for", and a different rectangle,
     # scale, surface, space or clip is a different picture even when the moment is the same.
     if ($null -eq $A -or $null -eq $B) { return $false }
@@ -10177,7 +10759,7 @@ function Test-SameCaptureSpec([hashtable]$A, [hashtable]$B) {
 }
 
 function New-BatchProgress($steps, [int]$failedAt, [string]$failedState) {
-    # What happened to every step, in the states a step can be in (§5.2).
+    # What happened to every step, in the states a step can be in (sec. 5.2).
     #
     # The loop stops at the first failure, so the shape follows from where it stopped: every
     # step before it completed (the loop only ever advances past a step that returned), the
@@ -10202,11 +10784,625 @@ function New-BatchProgress($steps, [int]$failedAt, [string]$failedState) {
     return $list.ToArray()
 }
 
+# ------------------------------------------------------------------ dry run (NEW-P1-02 B2)
+#
+# A rehearsal of a batch: everything a step does *up to the point where it would
+# send input*, and nothing beyond it. Elements are located through the same engine
+# the real step uses, frame points are projected through the same resolver with
+# activation forced off (a rehearsal never raises a window), the window guard and
+# the deadline arithmetic are the real ones, and the SendInput / pattern invoke /
+# clipboard write that would move the desktop is replaced by a per-step verdict.
+#
+# The receipt carries dryRun=true in the envelope, has no `performed` list and
+# reports action_sent=false -- a rehearsal can never be read as a batch that ran.
+# Every verdict is an observation of *this* desktop *at rehearsal time* (per-step
+# elapsedMs and the deadline fields let the host stamp the receipt's age): a
+# verdict about a moving desktop does not stay true, and the receipt says so
+# instead of pretending otherwise.
+
+function Resolve-DryRunStepPoint([object]$step) {
+    # The desktop point a coordinate step would use, without moving anything to it.
+    # A frame point goes through the same resolver the real step uses, with
+    # activation forced off: projecting is a read, raising a window is not.
+    if (-not [string]::IsNullOrEmpty("$($step.from_frame)")) {
+        $resolved = Resolve-FramePoint ([string]$step.from_frame) ([int]$step.x) ([int]$step.y) ([ordered]@{ allowActivate = $false; verifyContent = $step.verify_content; allowWindows = $step.allow_windows })
+        if ($resolved.ok -ne $true) { throw "$($resolved.error)" }
+        return [ordered]@{
+            x     = [int]$resolved.x
+            y     = [int]$resolved.y
+            frame = [ordered]@{
+                id      = "$($step.from_frame)"
+                drift   = [int]$resolved.drift
+                mapping = "$($resolved.mapping)"
+                guard   = $resolved.guard
+                note    = 'projected with activation suppressed (dry run)'
+            }
+        }
+    }
+    return [ordered]@{ x = [int]$step.x; y = [int]$step.y; frame = $null }
+}
+
+function Get-DryRunClickVia([object]$step, [int]$x, [int]$y) {
+    # The strategy the real click would use at this point (the five constraints: via prediction). The
+    # probe is the same read-only lookup Do-Click performs before choosing: the
+    # accessibility press covers only the plain single left click, everything else
+    # is a pointer gesture.
+    $clicks = 1
+    if ($null -ne $step.clicks) { $clicks = [int]$step.clicks }
+    if ($clicks -lt 1) { $clicks = 1 }
+    if ($clicks -gt 3) { $clicks = 3 }
+    $button = "$($step.button)"
+    if ([string]::IsNullOrWhiteSpace($button)) { $button = 'left' }
+    $hasModifiers = (-not [string]::IsNullOrWhiteSpace("$($step.modifiers)"))
+    if ($step.prefer_a11y -eq $false) { return [ordered]@{ via = 'mouse'; note = 'prefer_a11y is false, so the accessibility press is skipped by request' } }
+    if ($clicks -ne 1 -or $button -ne 'left' -or $hasModifiers) {
+        return [ordered]@{ via = 'mouse'; note = "the accessibility press covers only the plain single left click (clicks=$clicks, button=$button, modifiers=$hasModifiers)" }
+    }
+    $target = $null
+    try { $target = Get-PressableElementAtPoint $x $y } catch { $target = $null }
+    if ($null -ne $target) {
+        return [ordered]@{ via = 'a11y'; note = "an InvokePattern element sits at that point ($($target.controlType) `"$($target.name)`")" }
+    }
+    return [ordered]@{ via = 'mouse'; note = 'no pressable element under the point, so the click would go out as synthesized input' }
+}
+
+function Test-DryRunForegroundTarget([object]$step, [int64]$cursorHwnd, [bool]$guardWindows, [string]$what) {
+    # The into_hwnd check the real step runs (Assert-ExpectedForeground), mirrored.
+    # When the guard is on, the comparison is against the window the rehearsal
+    # believes the batch is in -- a focus or into_hwnd step before this one is
+    # assumed to have done what it says. With the guard off the only honest answer
+    # is the live foreground, the same thing the real run would check at send time.
+    if ($null -eq $step.into_hwnd -or [int64]$step.into_hwnd -eq 0) { return }
+    $want = [int64]$step.into_hwnd
+    if ($guardWindows -and $cursorHwnd -gt 0) {
+        if ($want -ne $cursorHwnd) {
+            throw "[FRONT_NOT_TARGET] $what is aimed at hwnd $want but this batch would be in hwnd $cursorHwnd at that point (the rehearsal assumes earlier focus/into_hwnd steps do what they say). A real run checks the live foreground and refuses the same way. (in a real run: action_sent=false)"
+        }
+        return
+    }
+    $info = Get-InjectableForeground
+    if ($null -eq $info) { throw "$what would go nowhere: no window holds the foreground. (in a real run: action_sent=false)" }
+    if ([int64]$info.hwnd -ne $want) {
+        $who = if ("$($info.title)" -ne '') { "`"$($info.title)`" [$($info.process)]" } else { "[$($info.process)]" }
+        throw "[FRONT_NOT_TARGET] $what was aimed at hwnd $want but the foreground is hwnd $($info.hwnd) $who, which is what would receive it. (in a real run: action_sent=false)"
+    }
+}
+
+function Get-DryRunUiaProbe([object]$step) {
+    # A UIA step rehearsed: the element is resolved exactly as the real step
+    # resolves it (a `ref` is re-located against the live tree, selectors go to the
+    # same engine), and the pattern the action would drive is checked on the match.
+    # Nothing is invoked, focused, selected, expanded or typed.
+    $stepAction = "$($step.action)".ToLowerInvariant()
+    # The same mapping Invoke-UiaStep performs, so the rehearsal asks the engine the
+    # question the real step would ask.
+    $a = @{}
+    if ($null -ne $step.ref -and "$($step.ref)" -ne '') { $a.ref = "$($step.ref)" }
+    if ($null -ne $step.hwnd) { $a.hwnd = [int64]$step.hwnd }
+    if ($null -ne $step.automation_id) { $a.automationId = "$($step.automation_id)" }
+    if ($null -ne $step.name) { $a.name = "$($step.name)" }
+    if ($null -ne $step.control_type) { $a.controlType = "$($step.control_type)" }
+    if ($null -ne $step.class_name) { $a.className = "$($step.class_name)" }
+    if ($null -ne $step.element_index) { $a.index = [int]$step.element_index }
+    if ($null -ne $step.text) { $a.text = "$($step.text)" }
+    if ($null -ne $step.prefix) { $a.prefix = "$($step.prefix)" }
+    if ($null -ne $step.suffix) { $a.suffix = "$($step.suffix)" }
+    if ($null -ne $step.attempts) { $a.attempts = [int]$step.attempts }
+
+    if ($null -ne $a.ref) {
+        # The real step re-locates the ref against the live tree; the rehearsal does
+        # the same read, so a stale ref fails here exactly as it would fail there.
+        $resolved = Resolve-ElementRef ([string]$a.ref)
+        if ($resolved.ok -ne $true) { throw "$($resolved.error)" }
+        foreach ($key in @($resolved.selector.Keys)) { $a[$key] = $resolved.selector[$key] }
+    }
+    $hasSelector = (-not [string]::IsNullOrEmpty([string]$a.automationId)) -or
+                   (-not [string]::IsNullOrEmpty([string]$a.name)) -or
+                   (-not [string]::IsNullOrEmpty([string]$a.controlType)) -or
+                   (-not [string]::IsNullOrEmpty([string]$a.className))
+    if (-not $hasSelector) { throw "uiact needs at least one selector: automationId, name, controlType or className" }
+
+    $targetHwnd = [int64]0
+    if ($null -ne $a.hwnd) { $targetHwnd = [int64]$a.hwnd }
+    if ($targetHwnd -eq 0) {
+        $fgProbe = [DshNative]::GetForegroundWindow()
+        if ($fgProbe -ne [IntPtr]::Zero) { $targetHwnd = [int64]$fgProbe }
+    }
+    if ($targetHwnd -eq 0) { throw 'no target window: the step names no hwnd and nothing holds the foreground' }
+
+    $index = 0
+    if ($null -ne $a.index) { $index = [int]$a.index }
+
+    $engine = 'com'
+    if ($env:DSH_COMPUTER_UI_ENGINE -eq 'managed') { $engine = 'managed' }
+    if ($engine -eq 'com' -and -not $script:ComUiaReady) { $engine = 'managed' }
+
+    $probe = [ordered]@{ via = 'uia'; engine = $engine; hwnd = $targetHwnd; matched = $null; pattern = ''; point = $null }
+
+    if ($engine -eq 'com') {
+        if ($stepAction -eq 'click_text' -or $stepAction -eq 'locate_text') {
+            # Locate fully as the real run does: the real read-only locate runs, and click_text then walks
+            # the same click-point fallback chain a real click would (OPT-P1-05,
+            # shared by both) -- minus the click itself.
+            $attempts = 8
+            if ($null -ne $a.attempts) { $attempts = [Math]::Max(1, [Math]::Min(50, [int]$a.attempts)) }
+            $rectX = 0; $rectY = 0; $rectW = 0; $rectH = 0; $foundText = ''; $matched = $null; $errorText = ''
+            [DshUia.Engine]::LocateText($targetHwnd,
+                [string]$a.automationId, [string]$a.name, [string]$a.controlType, [string]$a.className, $index,
+                [string]$a.text, [string]$a.prefix, [string]$a.suffix, $attempts,
+                [ref]$rectX, [ref]$rectY, [ref]$rectW, [ref]$rectH, [ref]$foundText, [ref]$matched, [ref]$errorText)
+            if ($errorText -ne '') { throw $errorText }
+            if ($null -ne $matched -and $matched.Count -gt 0) { $probe.matched = @(ConvertFrom-ComRows $matched)[0] }
+            $probe.pattern = 'TextPattern (locate)'
+            $probe.text = [ordered]@{ found = "$foundText"; rect = [ordered]@{ x = [int]$rectX; y = [int]$rectY; width = [int]$rectW; height = [int]$rectH } }
+            if ($stepAction -eq 'click_text') {
+                $chain = Get-ClickPointCandidates $targetHwnd ([int]$rectX) ([int]$rectY) ([int]$rectW) ([int]$rectH) $probe.matched
+                if (-not $chain.ok) { throw "$($chain.error)" }
+                $probe.point = $chain.point
+                if ($chain.attempts.Count -gt 0) { $probe.pointAttempts = @($chain.attempts) }
+            }
+            return $probe
+        }
+        if ($stepAction -eq 'get_caret') {
+            # A read, so it runs for real: the caret position a rehearsal reports is
+            # one a caller would otherwise pay a second call to learn.
+            $active = $false; $line = ''; $matched = $null; $errorText = ''
+            $caretX = 0; $caretY = 0; $caretW = 0; $caretH = 0
+            [DshUia.Engine]::ReadCaret($targetHwnd,
+                [string]$a.automationId, [string]$a.name, [string]$a.controlType, [string]$a.className, $index,
+                [ref]$active, [ref]$line, [ref]$caretX, [ref]$caretY, [ref]$caretW, [ref]$caretH, [ref]$matched, [ref]$errorText)
+            if ($errorText -ne '') { throw $errorText }
+            if ($null -ne $matched -and $matched.Count -gt 0) { $probe.matched = @(ConvertFrom-ComRows $matched)[0] }
+            $probe.pattern = 'TextPattern2 (caret)'
+            $probe.caret = [ordered]@{ active = [bool]$active; line = "$line" }
+            if ($caretW -gt 0 -and $caretH -gt 0) { $probe.caret.rect = [ordered]@{ x = [int]$caretX; y = [int]$caretY; width = [int]$caretW; height = [int]$caretH } }
+            return $probe
+        }
+        # Everything else: the element is resolved through the same Resolve and the
+        # pattern the action drives is checked on it. Nothing is invoked.
+        $matched = $null; $pattern = ''; $enabled = $false; $probeOk = $false; $errorText = ''
+        [DshUia.Engine]::Probe($targetHwnd, $stepAction,
+            [string]$a.automationId, [string]$a.name, [string]$a.controlType, [string]$a.className, $index,
+            [ref]$matched, [ref]$pattern, [ref]$enabled, [ref]$probeOk, [ref]$errorText)
+        if ($errorText -ne '') { throw $errorText }
+        if (-not $probeOk) { throw 'the probe resolved the element but the pattern check did not conclude' }
+        if ($null -ne $matched -and $matched.Count -gt 0) { $probe.matched = @(ConvertFrom-ComRows $matched)[0] }
+        $probe.pattern = "$pattern"
+        $probe.enabled = [bool]$enabled
+        return $probe
+    }
+
+    # Managed fallback: the same find, the same pattern question, nothing invoked.
+    Add-Type -AssemblyName UIAutomationClient
+    Add-Type -AssemblyName UIAutomationTypes
+    $root = Get-UiaRoot ([ordered]@{ hwnd = $targetHwnd })
+    $el = Find-UiaMatch $root $a
+    $node = ConvertTo-Node $el 0
+    $probe.matched = $node
+    $reading = ($stepAction -eq 'get_value') -or ($stepAction -eq 'get_text') -or ($stepAction -eq 'locate_text') -or ($stepAction -eq 'get_caret')
+    if ((-not $reading) -and ($node.enabled -ne $true)) {
+        throw "the matched element is disabled ($(Get-NodeLabel $node)), so it would ignore the action; nothing was sent"
+    }
+    if ($stepAction -eq 'click_text' -or $stepAction -eq 'locate_text') {
+        $located = Get-UiaTextRect $el $a ($stepAction -eq 'locate_text')
+        $probe.pattern = 'TextPattern (locate)'
+        $probe.text = [ordered]@{ found = "$($located.text)"; rect = [ordered]@{ x = [int]$located.x; y = [int]$located.y; width = [int]$located.width; height = [int]$located.height } }
+        if ($stepAction -eq 'click_text') {
+            $chain = Get-ClickPointCandidates $targetHwnd ([int]$located.x) ([int]$located.y) ([int]$located.width) ([int]$located.height) $node
+            if (-not $chain.ok) { throw "$($chain.error)" }
+            $probe.point = $chain.point
+            if ($chain.attempts.Count -gt 0) { $probe.pointAttempts = @($chain.attempts) }
+        }
+        return $probe
+    }
+    if ($stepAction -eq 'get_caret') {
+        # The managed wrapper has no TextPattern2 (Get-UiaCaret says the same); the
+        # real step throws this sentence, and so does the rehearsal.
+        throw 'the caret position needs TextPattern2, which the managed UI Automation wrapper does not expose; the COM engine (the default) can read it'
+    }
+    $patternType = $null
+    $patternLabel = ''
+    switch ($stepAction) {
+        'invoke'           { $patternType = [System.Windows.Automation.InvokePattern]::Pattern; $patternLabel = 'Invoke' }
+        'set_value'        { $patternType = [System.Windows.Automation.ValuePattern]::Pattern; $patternLabel = 'ValuePattern.SetValue' }
+        'get_value'        { $patternType = [System.Windows.Automation.ValuePattern]::Pattern; $patternLabel = 'ValuePattern' }
+        'toggle'           { $patternType = [System.Windows.Automation.TogglePattern]::Pattern; $patternLabel = 'Toggle' }
+        'select'           { $patternType = [System.Windows.Automation.SelectionItemPattern]::Pattern; $patternLabel = 'SelectionItem' }
+        'expand'           { $patternType = [System.Windows.Automation.ExpandCollapsePattern]::Pattern; $patternLabel = 'ExpandCollapse' }
+        'collapse'         { $patternType = [System.Windows.Automation.ExpandCollapsePattern]::Pattern; $patternLabel = 'ExpandCollapse' }
+        'scroll_into_view' { $patternType = [System.Windows.Automation.ScrollItemPattern]::Pattern; $patternLabel = 'ScrollItemPattern.ScrollIntoView (it is not inside a scrollable container)' }
+        'close'            { $patternType = [System.Windows.Automation.WindowPattern]::Pattern; $patternLabel = 'WindowPattern (close/minimize/maximize/restore)' }
+        'minimize'         { $patternType = [System.Windows.Automation.WindowPattern]::Pattern; $patternLabel = 'WindowPattern (close/minimize/maximize/restore)' }
+        'maximize'         { $patternType = [System.Windows.Automation.WindowPattern]::Pattern; $patternLabel = 'WindowPattern (close/minimize/maximize/restore)' }
+        'restore'          { $patternType = [System.Windows.Automation.WindowPattern]::Pattern; $patternLabel = 'WindowPattern (close/minimize/maximize/restore)' }
+        'legacy_action'    { $patternType = [System.Windows.Automation.LegacyIAccessiblePattern]::Pattern; $patternLabel = 'LegacyIAccessiblePattern.DoDefaultAction' }
+        'get_text'         { $patternType = [System.Windows.Automation.TextPattern]::Pattern; $patternLabel = 'TextPattern' }
+        'select_text'      { $patternType = [System.Windows.Automation.TextPattern]::Pattern; $patternLabel = 'TextPattern' }
+        'focus'            { $patternType = $null; $patternLabel = 'element.SetFocus' }
+        default            { throw "unknown UI Automation action '$stepAction'" }
+    }
+    if ($null -ne $patternType) {
+        $p = $null
+        if (-not $el.TryGetCurrentPattern($patternType, [ref]$p)) { throw "the matched element does not support $patternLabel" }
+        $probe.pattern = $patternLabel
+    } else {
+        $probe.pattern = $patternLabel
+    }
+    $probe.enabled = ($node.enabled -eq $true)
+    return $probe
+}
+
+function Invoke-BatchDryRun([object]$Arg, $steps, [hashtable]$captureBase, [int64]$deadlineMs, [int64]$deadlineAtMs, [bool]$guardWindows, [int64]$baselineHwnd, $expectedTransitions) {
+    # The rehearsal loop. One verdict per step, in step order, and the loop never
+    # stops early: the caller's question is "what in this sequence would fail", not
+    # "where does it fail first" -- wouldStopAt carries that answer. Steps after a
+    # refusal are rehearsed under the assumption that the earlier steps do what
+    # they say (a focus step moves the rehearsal's idea of the foreground, and so
+    # does an into_hwnd / hwnd-naming step -- exactly the baseline rule the real
+    # loop applies), and the receipt's note states the assumption.
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $reports = New-Object System.Collections.Generic.List[object]
+    $lines = New-Object System.Collections.Generic.List[string]
+    $transitionReports = New-Object System.Collections.Generic.List[object]
+    $allOk = $true
+    $wouldStopAt = -1
+    $outcome = 'dry-run'
+    $cursorHwnd = [int64]$baselineHwnd
+    # Simulated drag handle: a rehearsed drag dispatches nothing, so it cannot call
+    # Set-DragHandle -- but a later continuation step in this same batch still needs
+    # a start point. The endpoint of each rehearsed drag stands in for it.
+    $dryDragHandle = $null
+    $index = 0
+    foreach ($step in $steps) {
+        $action = "$($step.action)".ToLowerInvariant()
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $report = [ordered]@{ step = [int]$index; action = $action; verdict = 'ok'; dispatched = $false; detail = '' }
+        try {
+            # Cancellation is honored in a rehearsal too: a stopped caller should not
+            # wait for the rest of the checks.
+            Assert-NotCancelled "before dry-run of step $index ('$action')"
+            # The deadline arithmetic is the real one (C04, sec. 5.7). The rehearsal
+            # itself runs fast, so the honest reading of budgetLeftMs is "started
+            # now, the real batch reaches this step with at most this much left".
+            $leftForStep = Get-DeadlineRemainingMs
+            if ($deadlineAtMs -gt 0) { $report.budgetLeftMs = [int]$leftForStep }
+            if ($leftForStep -le 0) {
+                $outcome = 'dry-run-deadline'
+                throw "[DEADLINE_EXHAUSTED] the call's budget is spent before step $index ('$action') would start; a real run stops there and nothing after it is sent"
+            }
+            # The window guard, mirrored. A step that names its window (into_hwnd, a
+            # frame) checks its own target instead; every other foreground step is
+            # compared against the window the rehearsal believes the batch is in.
+            if ($guardWindows -and ($FOREGROUND_STEP_ACTIONS -contains $action)) {
+                $namesWindow = ($null -ne $step.into_hwnd) -or (-not [string]::IsNullOrEmpty("$($step.from_frame)"))
+                if (-not $namesWindow) {
+                    $live = Get-ForegroundInfo
+                    if ([int64]$live.hwnd -eq 0) {
+                        # Nothing holds the foreground: the step's own preflight says
+                        # so with a better message than "the window changed".
+                    } elseif ($cursorHwnd -eq 0) {
+                        $cursorHwnd = [int64]$live.hwnd
+                    } elseif ([int64]$live.hwnd -ne $cursorHwnd) {
+                        $declared = Test-ExpectedTransition $expectedTransitions $live
+                        if ($null -ne $declared) {
+                            $transitionReports.Add([ordered]@{
+                                atStep    = [int]$index
+                                from      = [int64]$cursorHwnd
+                                to        = [int64]$live.hwnd
+                                title     = "$($live.title)"
+                                process   = "$($live.process)"
+                                matchedBy = "$($declared.matchedBy)"
+                                note      = 'declared in expectedTransitions, so the batch would continue into this window'
+                            })
+                            $cursorHwnd = [int64]$live.hwnd
+                        } else {
+                            $nowTitle = "$($live.title)"
+                            if ($nowTitle -eq '') { $nowTitle = '(untitled)' }
+                            $outcome = 'dry-run-reobserve'
+                            throw "the window in front is not the one this batch would be in: it is hwnd $($live.hwnd) [$($live.process)] `"$nowTitle`" before step $index ('$action'), and no expectedTransitions entry covers it. A real run stops here; observe again (computer_windows, computer_ui) and declare the transition, or pass stop_on_window_change: false. (in a real run: action_sent=false for this step)"
+                        }
+                    }
+                }
+            }
+            switch ($action) {
+                'click' {
+                    # Do-Click runs Get-KeyVkList on the modifiers chord before sending,
+                    # so an unknown key name refuses the real step. The rehearsal parses
+                    # the same chord -- reporting ok here would be a false pass.
+                    if (-not [string]::IsNullOrWhiteSpace("$($step.modifiers)")) { [void](Get-KeyVkList "$($step.modifiers)") }
+                    $p = Resolve-DryRunStepPoint $step
+                    if (-not (Test-PointOnDesktop ([int]$p.x) ([int]$p.y))) {
+                        # The real click does not refuse an off-desktop point -- Windows
+                        # clamps the pointer to the nearest edge and the click lands
+                        # somewhere unintended. That is a fact worth saying, not a place
+                        # to stop.
+                        $report.warning = "($($p.x),$($p.y)) is outside the virtual desktop; a real click there would be clamped to the nearest edge and land somewhere you did not choose"
+                    }
+                    $viaProbe = Get-DryRunClickVia $step ([int]$p.x) ([int]$p.y)
+                    $report.point = [ordered]@{ x = [int]$p.x; y = [int]$p.y }
+                    $report.via = "$($viaProbe.via)"
+                    $report.detail = "$($viaProbe.note)"
+                    if ($null -ne $p.frame) { $report.frame = $p.frame }
+                }
+                'move' {
+                    if (($null -ne $step.dx) -or ($null -ne $step.dy)) {
+                        $report.detail = 'a relative move names no point, so there is nothing to locate; the pointer would move by the delta from wherever it is when the step runs'
+                    } else {
+                        $p = Resolve-DryRunStepPoint $step
+                        if (-not (Test-PointOnDesktop ([int]$p.x) ([int]$p.y))) {
+                            $report.warning = "($($p.x),$($p.y)) is outside the virtual desktop; the pointer would be clamped to the nearest edge"
+                        }
+                        $report.point = [ordered]@{ x = [int]$p.x; y = [int]$p.y }
+                        if ($null -ne $p.frame) { $report.frame = $p.frame }
+                        $report.detail = 'the point is on the desktop; the pointer would be moved (a write: hover, tooltip and focus follow it)'
+                    }
+                }
+                'drag' {
+                    # Do-Drag parses the modifiers chord too (Get-KeyVkList), so an
+                    # unknown key name refuses the real step; mirror that here.
+                    if (-not [string]::IsNullOrWhiteSpace("$($step.modifiers)")) { [void](Get-KeyVkList "$($step.modifiers)") }
+                    # Continuation ("from_last"/"continue_from"): the real run takes the
+                    # start from the drag handle (Get-DragHandle) and refuses when it is
+                    # missing or stale, before any input is sent. Taking (0,0) as the
+                    # start here would report ok for a step the real run refuses, so the
+                    # rehearsal mirrors the handle: a drag rehearsed earlier in this same
+                    # batch leaves a simulated handle; otherwise the worker's real handle
+                    # is consulted and the same refusal is raised. (Get-DragHandle clears
+                    # a stale handle as a side effect -- the real run does the same when
+                    # it reaches this step, and a stale handle is unusable either way.)
+                    $fromLast = ($null -ne $step.fromLast) -and ($step.fromLast -eq $true -or "$($step.fromLast)" -eq 'true')
+                    $continueFrom = ''
+                    if ($null -ne $step.continueFrom) { $continueFrom = "$($step.continueFrom)" }
+                    $contStart = $null
+                    $contNote = ''
+                    if ($fromLast -or $continueFrom -ne '') {
+                        if ($null -ne $dryDragHandle) {
+                            $contStart = $dryDragHandle
+                            $contNote = " (continued from the drag rehearsed earlier in this batch, at ($([int]$contStart.x),$([int]$contStart.y)))"
+                        } else {
+                            $handle = Get-DragHandle $continueFrom
+                            if (-not $handle.ok) { throw "[$($handle.code)] cannot continue from the last drag: $($handle.note). (action_sent=false, recovery=computer_screenshot, auto_reresolve=false)" }
+                            $contStart = $handle.handle
+                            $contNote = " (continued from drag handle $($handle.handle.id), at ($([int]$contStart.x),$([int]$contStart.y)))"
+                        }
+                    }
+                    $frameNote = ''
+                    $path = @()
+                    if ($null -ne $step.path) {
+                        foreach ($point in @($step.path)) {
+                            $px = Get-ArgMember $point 'x'
+                            $py = Get-ArgMember $point 'y'
+                            if ($null -eq $px -or $null -eq $py) { throw "[BAD_REQUEST] every point of a drag path needs x and y" }
+                            $path += [ordered]@{ x = [int]$px; y = [int]$py }
+                        }
+                        if ($path.Count -lt 2) { throw "[BAD_REQUEST] a drag path needs at least two points (got $($path.Count))" }
+                        if ($path.Count -gt 64) { throw "[BAD_REQUEST] a drag path takes at most 64 points (got $($path.Count)); simplify it" }
+                    }
+                    if ($path.Count -gt 0) {
+                        if (-not [string]::IsNullOrEmpty("$($step.from_frame)")) {
+                            # The real drag projects every path point before the button
+                            # goes down; the rehearsal projects them the same way, with
+                            # activation forced off.
+                            $projected = @()
+                            foreach ($point in $path) {
+                                $rp = Resolve-FramePoint ([string]$step.from_frame) ([int]$point.x) ([int]$point.y) ([ordered]@{ allowActivate = $false; verifyContent = $step.verify_content; allowWindows = $step.allow_windows })
+                                if ($rp.ok -ne $true) { throw "$($rp.error)" }
+                                $projected += [ordered]@{ x = [int]$rp.x; y = [int]$rp.y }
+                            }
+                            $path = $projected
+                            $frameNote = " (projected from frame $($step.from_frame), activation suppressed)"
+                        }
+                        foreach ($point in $path) {
+                            if (-not (Test-PointOnDesktop ([int]$point.x) ([int]$point.y))) {
+                                $report.warning = "path point ($($point.x),$($point.y)) is outside the virtual desktop; the pointer would be clamped to the nearest edge there"
+                                break
+                            }
+                        }
+                        $last = $path[$path.Count - 1]
+                        $report.point = [ordered]@{ x = [int]$path[0].x; y = [int]$path[0].y }
+                        $report.detail = "a $($path.Count)-point path$frameNote, from ($($path[0].x),$($path[0].y)) to ($($last.x),$($last.y))"
+                        if ($null -ne $contStart) { $report.detail += "; the continuation handle was validated, but a path starts at its own first point (the real run overrides the continued start the same way)" }
+                        # The real drag records its endpoint as the next continuation
+                        # handle; the rehearsal mirrors that with a simulated handle.
+                        $dryDragHandle = [ordered]@{ x = [int]$last.x; y = [int]$last.y }
+                    } else {
+                        $sx = [int]$step.from_x
+                        $sy = [int]$step.from_y
+                        if ($null -ne $contStart) { $sx = [int]$contStart.x; $sy = [int]$contStart.y }
+                        $ex = [int]$step.to_x
+                        $ey = [int]$step.to_y
+                        if (-not [string]::IsNullOrEmpty("$($step.from_frame)")) {
+                            $rs = Resolve-FramePoint ([string]$step.from_frame) $sx $sy ([ordered]@{ allowActivate = $false; verifyContent = $step.verify_content; allowWindows = $step.allow_windows })
+                            if ($rs.ok -ne $true) { throw "$($rs.error)" }
+                            $re2 = Resolve-FramePoint ([string]$step.from_frame) $ex $ey ([ordered]@{ allowActivate = $false; verifyContent = $step.verify_content; allowWindows = $step.allow_windows })
+                            if ($re2.ok -ne $true) { throw "$($re2.error)" }
+                            $sx = [int]$rs.x; $sy = [int]$rs.y
+                            $ex = [int]$re2.x; $ey = [int]$re2.y
+                            $frameNote = " (projected from frame $($step.from_frame), activation suppressed)"
+                        }
+                        if (-not (Test-PointOnDesktop $sx $sy)) { $report.warning = "the drag starts at ($sx,$sy), outside the virtual desktop; the pointer would be clamped to the nearest edge" }
+                        if (-not (Test-PointOnDesktop $ex $ey)) { $report.warning = "the drag ends at ($ex,$ey), outside the virtual desktop; the pointer would be clamped to the nearest edge" }
+                        $report.point = [ordered]@{ x = [int]$sx; y = [int]$sy }
+                        $report.detail = "($sx,$sy) -> ($ex,$ey)$frameNote$contNote"
+                        $dryDragHandle = [ordered]@{ x = [int]$ex; y = [int]$ey }
+                    }
+                }
+                'scroll' {
+                    if (($null -ne $step.x) -and ($null -ne $step.y)) {
+                        $p = Resolve-DryRunStepPoint $step
+                        if (-not (Test-PointOnDesktop ([int]$p.x) ([int]$p.y))) {
+                            $report.warning = "($($p.x),$($p.y)) is outside the virtual desktop; the pointer would be clamped to the nearest edge"
+                        }
+                        $report.point = [ordered]@{ x = [int]$p.x; y = [int]$p.y }
+                        if ($null -ne $p.frame) { $report.frame = $p.frame }
+                        $report.detail = "would scroll $($step.direction) at ($($p.x),$($p.y))"
+                    } else {
+                        $report.detail = "would scroll $($step.direction) at wherever the pointer is when the step runs (the step names no point)"
+                    }
+                }
+                'type' {
+                    Test-DryRunForegroundTarget $step $cursorHwnd $guardWindows 'typing'
+                    $report.detail = "would type $($("$($step.text)").Length) char(s)"
+                    if ($null -ne $step.into_hwnd) { $report.detail += " into hwnd $([int64]$step.into_hwnd)" }
+                }
+                'key' {
+                    # The chord parse is the real validation the send path uses.
+                    $vk = Get-KeyVkList "$($step.keys)"
+                    Test-DryRunForegroundTarget $step $cursorHwnd $guardWindows 'key press'
+                    $report.detail = "would press '$($step.keys)' ($($vk.Count) virtual key(s))"
+                    if ($null -ne $step.into_hwnd) { $report.detail += " into hwnd $([int64]$step.into_hwnd)" }
+                }
+                'paste' {
+                    Test-DryRunForegroundTarget $step $cursorHwnd $guardWindows 'paste'
+                    $report.detail = "would stage $($("$($step.text)").Length) char(s) on the clipboard and paste them -- the clipboard write is the part the rehearsal does not do"
+                    if ($null -ne $step.into_hwnd) { $report.detail += " into hwnd $([int64]$step.into_hwnd)" }
+                }
+                'focus' {
+                    $fh = [int64]$step.hwnd
+                    if (-not [DshNative]::IsWindow([IntPtr]$fh)) { throw "hwnd $fh is not a window any more; list windows with computer_windows and use a current handle" }
+                    $focusInfo = Get-WindowInfoForHwnd ([IntPtr]$fh)
+                    $report.hwnd = $fh
+                    $report.detail = "would raise and focus hwnd $fh (`"$($focusInfo.title)`" [$($focusInfo.process)])"
+                    if ($guardWindows) { $cursorHwnd = $fh }
+                }
+                'clipboard' {
+                    $op = "$($step.op)".ToLowerInvariant()
+                    # A missing op defaults to 'get' in the real batch loop; the rehearsal
+                    # names the same default instead of reporting a phantom op.
+                    if ($op -eq '') { $op = 'get' }
+                    if ($op -eq 'get') {
+                        $report.detail = 'not read (dry run): the clipboard a real run reads here is the one the earlier steps left behind, and reading it now would describe the wrong moment'
+                    } elseif ($op -eq 'set') {
+                        $report.detail = "not staged (dry run): the clipboard would be set to $($("$($step.text)").Length) char(s)"
+                    } elseif ($op -eq 'clear') {
+                        $report.detail = 'not cleared (dry run): the clipboard write is the part the rehearsal does not do'
+                    } else {
+                        # Unreachable while the shared preflight above validates the op
+                        # enumeration; kept so this branch never reports ok for an op the
+                        # real run refuses.
+                        throw "clipboard op must be 'get', 'set' or 'clear'"
+                    }
+                }
+                'wait' {
+                    $wantedMs = [int]([double]$step.seconds * 1000)
+                    $left = Get-DeadlineRemainingMs
+                    $report.detail = "would wait $($step.seconds)s (not slept)"
+                    if ($deadlineAtMs -gt 0 -and $left -lt $wantedMs) {
+                        $report.detail = "would wait $($step.seconds)s, but the call's deadline leaves $left ms -- a real run waits only that and reports deadline-partial"
+                    }
+                }
+                'wait_for' {
+                    $waitSpec = Get-WaitConditionSpec $step
+                    $probe = Test-ConditionPredicate $waitSpec.condition
+                    $satisfied = ("$($probe.status)" -eq 'true')
+                    $clip = ''
+                    if ($deadlineAtMs -gt 0) {
+                        $left = Get-DeadlineRemainingMs
+                        if ([int]$waitSpec.timeoutMs -gt $left) { $clip = "; the call's deadline would clip the wait to $left ms" }
+                    }
+                    if ($satisfied) {
+                        $report.detail = "satisfied right now ($($probe.observed))"
+                    } else {
+                        $report.detail = "not satisfied right now (status: $($probe.status); $($probe.observed)) -- a real run would poll up to $($waitSpec.timeoutMs) ms for it$clip"
+                        if ("$($step.on_timeout)" -eq 'continue') { $report.detail += ', then continue anyway (on_timeout: continue)' }
+                        else { $report.detail += ', and stop the batch with CONDITION_TIMEOUT if it stays unsatisfied' }
+                    }
+                    $report.wait = [ordered]@{ satisfied = [bool]$satisfied; status = "$($probe.status)"; observed = "$($probe.observed)"; timeoutMs = [int]$waitSpec.timeoutMs; timeoutFrom = "$($waitSpec.timeoutFrom)" }
+                }
+                'screenshot' {
+                    $capture = New-CaptureArgs $captureBase $step
+                    if ($capture.ContainsKey('window') -and [int64]$capture['window'] -ne 0) {
+                        if (-not [DshNative]::IsWindow([IntPtr][int64]$capture['window'])) { throw "hwnd $($capture['window']) is not a window any more; list windows with computer_windows and use a current handle" }
+                    }
+                    $report.capture = [ordered]@{ path = "$($capture['path'])"; format = "$($capture['format'])"; scale = [double]$capture['scale'] }
+                    if ($capture.ContainsKey('window')) { $report.capture.window = [int64]$capture['window'] }
+                    $report.detail = "not taken (dry run): a real run would capture to '$($capture['path'])' (format $($capture['format']), scale $($capture['scale']))"
+                }
+                default {
+                    if (-not ($UIA_STEP_ACTIONS -contains $action)) { throw "[BAD_REQUEST] unknown step action '$action'" }
+                    $probe = Get-DryRunUiaProbe $step
+                    $report.via = 'uia'
+                    $report.engine = "$($probe.engine)"
+                    $report.hwnd = [int64]$probe.hwnd
+                    if ($null -ne $probe.matched) { $report.matched = $probe.matched }
+                    if ("$($probe.pattern)" -ne '') { $report.pattern = "$($probe.pattern)" }
+                    if ($null -ne $probe.point) { $report.point = $probe.point }
+                    if ($null -ne $probe.pointAttempts) { $report.pointAttempts = @($probe.pointAttempts) }
+                    $label = Get-NodeLabel $probe.matched
+                    if (($action -eq 'locate_text') -or ($action -eq 'click_text')) {
+                        $tr = $probe.text.rect
+                        $report.text = [ordered]@{ found = "$($probe.text.found)"; rect = $tr }
+                        $report.detail = "located `"$($probe.text.found)`" at $($tr.x),$($tr.y) ($($tr.width)x$($tr.height)) on $label"
+                        if ($action -eq 'click_text' -and $null -ne $probe.point) {
+                            $report.detail = "would click `"$($probe.text.found)`" at ($($probe.point.x),$($probe.point.y)) [$($probe.point.level)] on $label"
+                        }
+                    } elseif ($action -eq 'get_caret') {
+                        $report.caret = $probe.caret
+                        $report.detail = "caret on $label (active: $($probe.caret.active))"
+                    } else {
+                        $report.detail = "would $action $label"
+                        if ("$($probe.pattern)" -ne '') { $report.detail += " ($($probe.pattern) present)" }
+                    }
+                }
+            }
+            # The baseline moves the way the real loop moves it (12-batching.ps1
+            # L887-892): a step that names its window moves the batch there on
+            # purpose, and the guard follows it.
+            if ($guardWindows) {
+                if ($null -ne $step.into_hwnd) { $cursorHwnd = [int64]$step.into_hwnd }
+                elseif (($UIA_STEP_ACTIONS -contains $action) -and $null -ne $step.hwnd) { $cursorHwnd = [int64]$step.hwnd }
+            }
+        } catch {
+            $report.verdict = 'refused'
+            $report.detail = "$($_.Exception.Message)"
+            if ($allOk) { $wouldStopAt = [int]$index }
+            $allOk = $false
+        }
+        $sw.Stop()
+        $report.elapsedMs = [int]$sw.ElapsedMilliseconds
+        $reports.Add($report)
+        $lines.Add("step $index ${action}: $($report.verdict) -- $($report.detail)")
+        $index += 1
+    }
+
+    $reply = [ordered]@{
+        # dryRun is the unmixable marker: a receipt that carries it never ran, and a
+        # receipt that ran never carries it (NEW-P1-02 B2, constraint four).
+        dryRun      = $true
+        outcome     = $outcome
+        allOk       = $allOk
+        wouldStopAt = [int]$wouldStopAt
+        count       = [int]$steps.Count
+        steps       = @($reports.ToArray())
+        lines       = @($lines.ToArray())
+        action_sent = $false
+        wroteSteps  = @()
+        elapsedMs   = [int]$stopwatch.ElapsedMilliseconds
+        note        = 'dry run: every check ran for real and nothing was dispatched. Verdicts describe the desktop at rehearsal time; steps after a refusal were rehearsed assuming the earlier steps do what they say. wouldStopAt names the first step a real run would refuse (-1: none).'
+    }
+    if ($transitionReports.Count -gt 0) { $reply.transitions = @($transitionReports.ToArray()) }
+    if ($deadlineMs -gt 0) {
+        $reply.deadlineMs = [int]$deadlineMs
+        $reply.deadlineLeftMs = [int](Get-DeadlineRemainingMs)
+    }
+    # The trailing observations answer questions about the desktop *after* the
+    # steps, which a rehearsal never produces -- so they are reported, not taken.
+    if ($null -ne $Arg.waitFor) { $reply.waitFor = 'not evaluated (dry run): the batch-level condition describes the desktop after the steps, which a rehearsal never produces' }
+    if (($Arg.screenshot -eq $true) -or ($null -ne $Arg.state)) {
+        $trailing = [ordered]@{}
+        if ($Arg.screenshot -eq $true) { $trailing.screenshot = 'not taken (dry run)' }
+        if ($null -ne $Arg.state) { $trailing.state = 'not read (dry run)' }
+        $reply.trailing = $trailing
+    }
+    Clear-Deadline
+    return $reply
+}
+
 function Do-Batch([object]$Arg) {
     # One round trip for a whole gesture. The transport floor here is 1-3 ms, so
     # batching is not about the pipe: it is about the model only having to make one
     # decision-and-observe cycle instead of one per action. Any agent that drives a
-    # desktop spends its budget the same way — the round trips dominate, not the bytes.
+    # desktop spends its budget the same way -- the round trips dominate, not the bytes.
     $steps = @($Arg.steps)
     if ($steps.Count -eq 0) { throw "batch requires at least one step" }
     # One deadline for the whole call (C04). Every wait inside the batch -- a step's own
@@ -10219,7 +11415,7 @@ function Do-Batch([object]$Arg) {
     if ($null -ne $Arg.deadlineMs -and "$($Arg.deadlineMs)" -ne '') { $deadlineMs = [int64]$Arg.deadlineMs }
     $deadlineAtMs = [int64]0
     if ($deadlineMs -gt 0) { $deadlineAtMs = [int64]$script:Clock.ElapsedMilliseconds + $deadlineMs }
-    # Published for the input functions this batch calls (§5.7): a step that starts before the
+    # Published for the input functions this batch calls (sec. 5.7): a step that starts before the
     # deadline can still run past it, and the refusal has to land before the *send*, not after
     # the batch has already typed into a call whose time was spent.
     Set-DeadlineAt $deadlineAtMs
@@ -10264,7 +11460,7 @@ function Do-Batch([object]$Arg) {
     if ($null -ne $Arg.quality) { $quality = [int]$Arg.quality }
     $scale = 1.0
     if ($null -ne $Arg.scale) { $scale = [double]$Arg.scale }
-    # The batch-level capture request, resolved once (§5.4). Every capture this call takes --
+    # The batch-level capture request, resolved once (sec. 5.4). Every capture this call takes --
     # a step's, the trailing one -- starts from this and changes only what that capture is
     # about. `regionSpace` and `clip` belong here: the host has always sent them at the
     # batch level, and until they were read here a batch that asked for a window-local
@@ -10314,6 +11510,9 @@ function Do-Batch([object]$Arg) {
     # `stopOnWindowChange: false` turns the whole guard off for a sequence that deliberately
     # walks through a window it expects to appear.
     $guardWindows = $Arg.stopOnWindowChange -ne $false
+    # NEW-P1-02 B2: a rehearsal runs every check and no dispatch. The host spells
+    # it dryRun; a hand-written request may say dry_run.
+    $dryRun = ($Arg.dryRun -eq $true) -or ($Arg.dry_run -eq $true)
     $baselineHwnd = [int64]0
     if ($guardWindows) {
         $baselineProbe = Get-ForegroundInfo
@@ -10326,7 +11525,7 @@ function Do-Batch([object]$Arg) {
     $evidence = $null
     $digestRect = $null
     $digestBefore = ''
-    if ($Arg.evidence -ne $false) {
+    if ($Arg.evidence -ne $false -and -not $dryRun) {
         foreach ($step in $steps) {
             if ($WRITE_STEP_ACTIONS -contains "$($step.action)".ToLowerInvariant()) {
                 $digestRect = Get-ForegroundRect
@@ -10350,7 +11549,7 @@ function Do-Batch([object]$Arg) {
     # screen at step 2 and clicked at step 5 handed back the step-2 frame as "the
     # result of this call". What settles it is the write ordinal the frame was taken
     # against (see Test-CaptureAfterWrite), not the step index.
-    # Which step produced the frame this reply returns, kept *with* the frame (§5.6). -1 means
+    # Which step produced the frame this reply returns, kept *with* the frame (sec. 5.6). -1 means
     # "no screenshot step produced this frame" (it came from the trailing capture, or from none
     # at all).
     $frameStepIndex = -1
@@ -10425,7 +11624,7 @@ function Do-Batch([object]$Arg) {
         switch ($candidateAction) {
             'move'      {
                 # Three ways to move, and a step names exactly one: a destination point, a
-                # delta (§9), or an image point through a frame.
+                # delta (sec. 9), or an image point through a frame.
                 $hasDelta = ($null -ne $candidate.dx) -or ($null -ne $candidate.dy)
                 $hasPoint = ($null -ne $candidate.x) -and ($null -ne $candidate.y)
                 $hasFrame = -not [string]::IsNullOrEmpty("$($candidate.from_frame)")
@@ -10438,7 +11637,7 @@ function Do-Batch([object]$Arg) {
             }
             'click'     { if ($null -eq $candidate.x -and [string]::IsNullOrEmpty("$($candidate.from_frame)")) { throw "[BAD_REQUEST] step $stepIndex is a click with neither x/y nor from_frame" } }
             'drag'      {
-                # §8 后半：续画的起点来自上次落点，这时 from_x/from_y 不是必需的（只要终点）。
+                # sec. 8 second half: a continued stroke starts from the last landing point, so from_x/from_y are not required here (only the destination).
                 $continues = ($null -ne $candidate.fromLast -and "$($candidate.fromLast)" -eq 'true') -or -not [string]::IsNullOrEmpty("$($candidate.continueFrom)")
                 if ($null -eq $candidate.to_x -or $null -eq $candidate.to_y) { throw "[BAD_REQUEST] step $stepIndex is a drag without to_x and to_y" }
                 if (-not $continues -and ($null -eq $candidate.from_x -or $null -eq $candidate.from_y)) { throw "[BAD_REQUEST] step $stepIndex is a drag without from_x, from_y, to_x and to_y (or from_last/continue_from for a continued stroke)" }
@@ -10467,7 +11666,14 @@ function Do-Batch([object]$Arg) {
                     throw "[BAD_REQUEST] step $stepIndex is a wait_for with no condition: give it a kind (window/control/value/text/every), or a hwnd/title/control/control_type selector, plus timeout_ms"
                 }
             }
-            'clipboard' { if ("$($candidate.op)" -eq 'set' -and $null -eq $candidate.text) { throw "[BAD_REQUEST] step $stepIndex sets the clipboard without text" } }
+            'clipboard' {
+                # The op enumeration Do-Clipboard enforces, checked here so the real run
+                # and the rehearsal refuse the same step. (-contains is case-insensitive,
+                # matching Do-Clipboard's -eq comparisons.)
+                $clipOp = "$($candidate.op)"
+                if ($clipOp -ne '' -and (@('get', 'set', 'clear') -notcontains $clipOp)) { throw "[BAD_REQUEST] step $stepIndex names an unknown clipboard op '$clipOp' (must be 'get', 'set' or 'clear')" }
+                if ($clipOp -eq 'set' -and $null -eq $candidate.text) { throw "[BAD_REQUEST] step $stepIndex sets the clipboard without text" }
+            }
             'screenshot' {
                 if ([string]::IsNullOrWhiteSpace("$($candidate.path)") -and [string]::IsNullOrWhiteSpace($defaultPath)) {
                     throw "[BAD_REQUEST] step $stepIndex is a screenshot and neither it nor the call carries a path"
@@ -10491,11 +11697,18 @@ function Do-Batch([object]$Arg) {
         $stepIndex += 1
     }
 
+    if ($dryRun) {
+        # NEW-P1-02 B2: rehearse instead of run. The deadline was published above
+        # (Set-DeadlineAt), so the rehearsal's budget arithmetic is the real one;
+        # Invoke-BatchDryRun clears it again before returning.
+        return Invoke-BatchDryRun $Arg $steps $captureBase $deadlineMs $deadlineAtMs $guardWindows $baselineHwnd $expectedTransitions
+    }
+
     foreach ($step in $steps) {
         $action = "$($step.action)".ToLowerInvariant()
         if ([string]::IsNullOrWhiteSpace($action)) { throw "step $index has no action" }
         try {
-            # The budget, before the step and not only inside the waits (§5.7). A step that
+            # The budget, before the step and not only inside the waits (sec. 5.7). A step that
             # starts after the deadline is the failure this whole check exists for: the batch
             # reports how far it got, and the steps that did not run are named rather than
             # typed into a call whose time was already spent.
@@ -10557,7 +11770,7 @@ function Do-Batch([object]$Arg) {
                     # A relative move (dx/dy) is its own branch, not a coordinate write: it
                     # names no point, so there is nothing to project, nothing to guard and no
                     # frame to check -- and it is the only form that works where the pointer
-                    # is locked or recentred (8.txt §9).
+                    # is locked or recentred (8.txt sec. 9).
                     if ($null -ne $step.dx -or $null -ne $step.dy) {
                         $dx = 0
                         if ($null -ne $step.dx) { $dx = [int]$step.dx }
@@ -10596,7 +11809,10 @@ function Do-Batch([object]$Arg) {
                     }
                 }
                 'drag' {
-                    $r = Do-Drag @{ fromX = $step.from_x; fromY = $step.from_y; toX = $step.to_x; toY = $step.to_y; path = $step.path; durationMs = $step.duration_ms; fromFrame = $step.from_frame; modifiers = $step.modifiers; allowActivate = $step.allow_activate; verifyContent = $step.verify_content; allowWindows = $step.allow_windows }
+                    # fromLast/continueFrom must reach Do-Drag: the pre-validation above
+                    # blesses a continuation drag without from_x/from_y, so dropping the
+                    # flags here would send a real drag from (0,0) instead of the handle.
+                    $r = Do-Drag @{ fromX = $step.from_x; fromY = $step.from_y; toX = $step.to_x; toY = $step.to_y; path = $step.path; durationMs = $step.duration_ms; fromFrame = $step.from_frame; modifiers = $step.modifiers; allowActivate = $step.allow_activate; verifyContent = $step.verify_content; allowWindows = $step.allow_windows; fromLast = $step.fromLast; continueFrom = $step.continueFrom }
                     if ($null -ne $r['path']) {
                         $performed.Add("drag a $($r.path.points)-point path ($($r.path.samples) moves, $($r.path.durationMs) ms) ($($r.from.x),$($r.from.y))->($($r.to.x),$($r.to.y))")
                     } else {
@@ -10613,7 +11829,7 @@ function Do-Batch([object]$Arg) {
                 }
                 'paste' {
                     $r = Do-Paste @{ text = $step.text; restore = $step.restore; requireRestore = $step.require_restore; intoHwnd = $step.into_hwnd; verify = $step.verify }
-                    # The restore outcome is six-valued now (§6), so the step line says which one
+                    # The restore outcome is six-valued now (sec. 6), so the step line says which one
                     # happened instead of collapsing five of them into "could not be restored".
                     $restoreWord = switch ("$($r.restoreStatus)") {
                         'restored'                    { 'the previous clipboard content is back' }
@@ -10743,7 +11959,7 @@ function Do-Batch([object]$Arg) {
                 }
                 'screenshot' {
                     Settle-Before-Capture
-                    # One normalisation for every capture this batch takes (§5.4): the step's
+                    # One normalisation for every capture this batch takes (sec. 5.4): the step's
                     # own arguments win over the batch-level ones, and `regionSpace`/`clip`
                     # reach the capture now instead of being dropped between the host and the
                     # worker. The pacing arguments are the step's own where it asked for them,
@@ -10769,12 +11985,12 @@ function Do-Batch([object]$Arg) {
                             capture = $stepCapture
                             # The *shape* of the request that produced this frame, kept whole
                             # so the trailing capture can be compared against it field by field
-                            # (§7.3). A frame may stand in for the trailing capture only if it
+                            # (sec. 7.3). A frame may stand in for the trailing capture only if it
                             # is the same picture: another scale, surface, region or clip is
                             # another picture, even when the rectangle and the moment are the
                             # same (A06).
                             spec = $shotArgs
-                            # Which step produced it, carried *with* the frame (§5.6). The
+                            # Which step produced it, carried *with* the frame (sec. 5.6). The
                             # index used to be recorded once, for the first screenshot step,
                             # while the frame itself was replaced by every later one -- so a
                             # reply that returned the frame of step 5 said step 2.
@@ -10798,9 +12014,9 @@ function Do-Batch([object]$Arg) {
             $cancelled = $phrase.StartsWith('[CANCELED]', [System.StringComparison]::Ordinal)
             # Running out of budget is an outcome of its own, not a failed step: the step that
             # refused did so *because* the call was over, and the caller's next move is a new
-            # call with a larger deadline (or an observation), not a fix to the arguments (§5.7).
+            # call with a larger deadline (or an observation), not a fix to the arguments (sec. 5.7).
             $outOfTime = $phrase.StartsWith('[DEADLINE_EXHAUSTED]', [System.StringComparison]::Ordinal)
-            # A step whose input only partly landed is its own outcome (§6): some of it is in
+            # A step whose input only partly landed is its own outcome (sec. 6): some of it is in
             # the application, so it is neither "failed" (nothing happened) nor "completed".
             $partialSend = $phrase.StartsWith('[PARTIAL_INPUT]', [System.StringComparison]::Ordinal)
             $evidence = Complete-Evidence
@@ -10856,7 +12072,7 @@ function Do-Batch([object]$Arg) {
             }
             if ($nextStep -ge 0) { $failure['nextStep'] = [int]$nextStep }
             # The deadline numbers belong to a failed call as much as to a successful one: this
-            # is exactly the case ("it stopped on budget") they were added for (§5.7).
+            # is exactly the case ("it stopped on budget") they were added for (sec. 5.7).
             if ($deadlineMs -gt 0) {
                 $over = [int64]$script:Clock.ElapsedMilliseconds - [int64]$deadlineAtMs
                 $failure['deadlineMs'] = [int]$deadlineMs
@@ -10908,10 +12124,10 @@ function Do-Batch([object]$Arg) {
     $shotReuse = ''
     $wantedShot = ($Arg.screenshot -eq $true)
     # Set when one of the trailing *observations* fails (the capture, the accessibility read):
-    # it is attached to the reply rather than replacing it, because the steps already ran (§5.2).
+    # it is attached to the reply rather than replacing it, because the steps already ran (sec. 5.2).
     $observation = $null
     # The trailing capture's request, built here by the same rules a step's capture uses
-    # (§5.4) -- and built unconditionally, so the comparison below is against exactly the
+    # (sec. 5.4) -- and built unconditionally, so the comparison below is against exactly the
     # request the trailing capture would send.
     $trailingArgs = New-CaptureArgs $captureBase
     if ($wantedShot -and $null -ne $usefulCapture) {
@@ -10922,7 +12138,7 @@ function Do-Batch([object]$Arg) {
         # before its own last write, and reporting it as the result is the one failure the
         # caller cannot see. No write and no wait after it means it is the answer, and the
         # trailing capture that used to be taken anyway is skipped.
-        # The trailing capture's request, by the same rules as a step's (§5.4): the comparison
+        # The trailing capture's request, by the same rules as a step's (sec. 5.4): the comparison
         # below is against exactly the request the trailing capture would send.
         $sameRequest = Test-SameCaptureSpec $usefulCapture.spec $trailingArgs
         if ($sameRequest -and (Test-CaptureReusable $usefulCapture.capture)) {
@@ -10960,7 +12176,7 @@ function Do-Batch([object]$Arg) {
         } catch {
             # The capture is the trailing *observation*, not the call: a screen that refuses to
             # be read (a locked desktop, a surface with no usable rectangle) must not replace
-            # the record of the steps that already ran (§5.2). The failure is attached, and the
+            # the record of the steps that already ran (sec. 5.2). The failure is attached, and the
             # caller is told to take the picture itself.
             $shot = $null
             $shotReuse = ''
@@ -11019,10 +12235,13 @@ function Do-Batch([object]$Arg) {
                 textTarget   = $s.text_target
                 maxTextChars = $s.max_text_chars
                 maxSelected  = $s.max_selected
+                # NEW-P1-03: the trailing read can carry the OCR block too; same
+                # shorthand as the standalone read (absent = not asked for).
+                ocr          = $s.ocr
             }
         } catch {
             # The observation is a *second* thing this call does, and its failure does not undo
-            # the first (§5.2): the steps ran, so their receipt is returned with the read's
+            # the first (sec. 5.2): the steps ran, so their receipt is returned with the read's
             # failure attached rather than the whole reply being replaced by an error.
             $observation = [ordered]@{
                 failed = $true
@@ -11058,7 +12277,7 @@ function Do-Batch([object]$Arg) {
     # How much of the call's own deadline was left (or how far past it the call ran). The
     # numbers are measured, never clamped to the budget: a blocking system call inside this
     # worker cannot be interrupted from here, and reporting the budget instead of the real
-    # elapsed time is how a timeout came to look like it fitted (§5.7, item 6).
+    # elapsed time is how a timeout came to look like it fitted (sec. 5.7, item 6).
     if ($deadlineMs -gt 0) {
         $over = [int64]$script:Clock.ElapsedMilliseconds - [int64]$deadlineAtMs
         $reply['deadlineMs'] = [int]$deadlineMs
@@ -11321,79 +12540,10 @@ function Do-UiActByRef([object]$Arg) {
     return $receipt
 }
 
-function Do-Prune([object]$Arg) {
-    # The optimization pass as a pure function over a supplied tree.
-    #
-    # It exists so the pass can be tested against trees that are actually messy. The
-    # windows on a given desktop may all be tidy -- on the machine this was written on,
-    # every window but a browser was -- and a pass that only ever sees tidy input is a
-    # pass that breaks silently the first time it meets a wall of anonymous panes.
-    $rows = New-Object System.Collections.Generic.List[object]
-    foreach ($node in @($Arg.nodes)) {
-        $rows.Add([ordered]@{
-            depth        = [int]$node.depth
-            name         = [string]$node.name
-            controlType  = [string]$node.controlType
-            automationId = [string]$node.automationId
-            className    = [string]$node.className
-            enabled      = [bool]$node.enabled
-            offscreen    = [bool]$node.offscreen
-            x            = [int]$node.x
-            y            = [int]$node.y
-            width        = [int]$node.width
-            height       = [int]$node.height
-            patterns     = @($node.patterns)
-        })
-    }
-    $maxNodes = 250
-    if ($null -ne $Arg.maxNodes) { $maxNodes = [Math]::Max(1, [int]$Arg.maxNodes) }
-    $optimized = Optimize-UiRows $rows $maxNodes
-    return [ordered]@{ nodes = @($optimized.nodes); pruned = [int]$optimized.pruned; input = $rows.Count }
-}
-
-function Do-Delta([object]$Arg) {
-    # The tree comparison as a pure function over two supplied readings, for the same
-    # reason `prune` is one: in practice a delta only ever compared tidy trees that had
-    # not changed, and the fields it forgot to compare -- enabled, offscreen, patterns --
-    # are exactly the ones a caller acts on. Two readings written by hand are how that
-    # gets tested without needing a window that changes a button's enabled state on cue.
-    $nodes = New-Object System.Collections.Generic.List[object]
-    foreach ($node in @($Arg.nodes)) {
-        $nodes.Add([ordered]@{
-            key          = "$($node.key)"
-            ref          = "$($node.ref)"
-            name         = [string]$node.name
-            controlType  = [string]$node.controlType
-            className    = [string]$node.className
-            enabled      = [bool]$node.enabled
-            offscreen    = [bool]$node.offscreen
-            patterns     = @($node.patterns)
-            x            = [int]$node.x
-            y            = [int]$node.y
-            width        = [int]$node.width
-            height       = [int]$node.height
-        })
-    }
-    $entries = New-Object System.Collections.Generic.List[object]
-    foreach ($entry in @($Arg.entries)) {
-        $entries.Add([ordered]@{
-            key         = "$($entry.key)"
-            snapshot    = "$($entry.snapshot)"
-            name        = [string]$entry.name
-            controlType = [string]$entry.controlType
-            className   = [string]$entry.className
-            enabled     = [bool]$entry.enabled
-            offscreen   = [bool]$entry.offscreen
-            patterns    = @($entry.patterns)
-            x           = [int]$entry.x
-            y           = [int]$entry.y
-            width       = [int]$entry.width
-            height      = [int]$entry.height
-        })
-    }
-    $result = New-TreeDelta $nodes $entries "$($Arg.base)"
-    return [ordered]@{ counts = $result.counts; nodes = @($result.nodes) }
-}
+# Cut-list item CUT-2: the `prune` and `delta` commands are gone. They exposed the tree
+# optimizer and the tree comparison as pure functions over caller-supplied data, and
+# nothing calls them -- the live read path (uitree with `since`/`prune` arguments)
+# runs Optimize-UiRows and New-TreeDelta directly.
 
 function ConvertTo-FrameRecord([object]$spec) {
     # A frame spec (from JSON) -> the internal FrameRecord shape. Only the fields a
@@ -11580,7 +12730,6 @@ $handler = @{
     'batch'      = { param($a) Do-Batch $a }
     'cursor'     = { param($a) Do-Cursor }
     'click'      = { param($a) Do-Click $a }
-    'wait'       = { param($a) Do-Wait $a }
     'wait_for'   = { param($a) Wait-ForCondition $a }
     'drag'       = { param($a) Do-Drag $a }
     'scroll'     = { param($a) Do-Scroll $a }
@@ -11593,13 +12742,13 @@ $handler = @{
     'digest'     = { param($a) Do-Digest $a }
     'windows'    = { param($a) Do-Windows $a }
     'focus'      = { param($a) Do-Focus $a }
-    'uireset'    = { param($a) [DshUia.Engine]::Reset(); return [ordered]@{ reset = $true } }
     'uitree'     = { param($a) Reset-WalkCounters; Do-UiTree $a }
     'uiact'      = { param($a) Do-UiActByRef $a }
     'health'     = { param($a) Do-Health }
     'pacing'     = { param($a) Do-Pacing $a }
-    'prune'      = { param($a) Do-Prune $a }
-    'delta'      = { param($a) Do-Delta $a }
+    # Cut-list item CUT-2: `wait` / `prune` / `delta` / `uireset` had no caller left -- the
+    # batch's own wait step and the uitree `since`/`prune` arguments carry those
+    # semantics -- so the commands were removed. `frameproject` and `digest` stay.
     'frameproject' = { param($a) Do-FrameProject $a }
     'frameattach' = { param($a) Do-FrameAttach $a }
     'shutdown'   = { param($a) [ordered]@{ bye = $true } }
@@ -11626,7 +12775,7 @@ try {
     }
 } catch { $script:BuildId = '' }
 
-# The build identity has to cover the code that actually runs (§13.5). The independent release
+# The build identity has to cover the code that actually runs (sec. 13.5). The independent release
 # path is a second script the host executes when this worker is force-killed, so its hash is
 # published here too and verified by the host the same way: a release script from another install
 # would be a release that presses keys this build never recorded.
@@ -11653,7 +12802,7 @@ $script:Capabilities = @(
     'batch.expected-transitions',
     'observe.epoch'            # a wait boundary invalidates a frame as a final result
     ,'text.observe'            # a read can carry the focused/selected/document text, on one shared budget
-    # Added by the 9.txt work. The host *requires* these (§13.7): a half-applied rollback -- a new
+    # Added by the 9.txt work. The host *requires* these (sec. 13.7): a half-applied rollback -- a new
     # host talking to the 1.39.1 worker -- would otherwise be accepted, because the file on disk
     # still matches the process that read it, and the two halves would silently disagree about the
     # reply shape instead of saying so.
@@ -11662,6 +12811,8 @@ $script:Capabilities = @(
     ,'input.partial'           # a partially delivered input is its own outcome, never a success
     ,'deadline.enforced'       # a spent budget stops the call before it starts another step
     ,'release.independent'     # held input is mirrored, so a killed worker can still be released
+    ,'batch.dryrun'            # NEW-P1-02 B2: a batch can be rehearsed (dryRun) -- every check, no dispatch
+    ,'ocr.observe'             # NEW-P1-03: the ui observation can carry unverified OCR text (lazy WinRT, never a frame)
 )
 
 Write-Line @{ ready = $true; info = @{ dpi = $dpiMode; dpiActual = $dpiActual; screens = @(Get-ScreenList); virtual = Get-VirtualBounds; pid = $PID; version = $PSVersionTable.PSVersion.ToString(); generation = $script:BootGen; protocol = 2; frameProtocol = $script:FrameProtocol; build = $script:BuildId; releaseBuild = $script:ReleaseBuildId; capabilities = @($script:Capabilities); actions = @($STEP_ACTIONS); uiaActions = @($UIA_STEP_ACTIONS); cancelFile = $script:CancelFile; pacing = (Get-PacingConfig) } }

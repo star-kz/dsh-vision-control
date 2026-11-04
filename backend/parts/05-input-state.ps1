@@ -7,7 +7,7 @@
 
 $script:HeldKeys = New-Object System.Collections.Generic.List[int]
 $script:HeldButtons = New-Object System.Collections.Generic.List[int]
-# Where the held-input state is mirrored for the host's independent release path (§6 ④).
+# Where the held-input state is mirrored for the host's independent release path (sec. 6 rule 4).
 # Empty means "do not mirror", which is what a worker started by hand gets.
 $script:HeldStateFile = ''
 if ($env:DSH_COMPUTER_USE_HELD_FILE) { $script:HeldStateFile = "$($env:DSH_COMPUTER_USE_HELD_FILE)" }
@@ -67,8 +67,8 @@ $script:WriteStampTtlMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_WRITE_TTL_MS' 2000 
 # shape as the stability poll -- start immediately, sample, compare, sleep the
 # remainder -- so a condition that is already true costs one check and no sleep.
 $script:WaitPollMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_WAIT_POLL_MS' 120 20 2000
-# 方案 §6.2: "低成本窗口或文件检查可较高频轮询；大范围 UIA 和视觉判断应降低频率、缩小范围，
-# 并考虑退避." A UIA tree walk or a screenshot fingerprint costs real work, so those conditions
+# Plan doc sec. 6.2: "low-cost window or file checks may poll at a higher rate; wide UIA and visual checks should poll less often, over a smaller scope,
+# and consider backing off." A UIA tree walk or a screenshot fingerprint costs real work, so those conditions
 # start slower and back off to a lower ceiling than a window's existence or a file's state.
 $script:WaitHeavyPollMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_WAIT_HEAVY_POLL_MS' 300 20 2000
 $script:WaitMaxMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_WAIT_MAX_MS' 30000 100 120000
@@ -80,7 +80,7 @@ $script:WaitMaxMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_WAIT_MAX_MS' 30000 100 12
 $script:ReadSettleMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_READ_SETTLE_MS' 0 0 1000
 
 # How old a frame has to be before a coordinate taken from it is checked against what the
-# surface looks like *now* (方案 §3.2：滚动、导航、应用自行改变内容都要让旧定位失效).
+# surface looks like *now* (plan doc sec. 3.2: scrolling, navigation and the app changing its own content must all invalidate an old location).
 #
 # Geometry cannot see any of those: the rectangle is identical and the pixels are not. So a
 # frame carries a fingerprint of the surface it was captured from, and a frame that has been
@@ -97,9 +97,9 @@ $script:LastWrite = $null
 
 # The last drag this session performed: @{ id; x; y; hwnd; generation; atMs }, or $null.
 #
-# 8.txt §8 后半：一次拖拽的落点要能被下一次调用接着用（"从刚才那里再画一段"），省掉重新定位起点的往返。
-# 与 $script:LastWrite 同一套做法：后端持有、带有效期、过期即置空 —— 而且**绝不返回旧值**，
-# 调用方拿到的是明确拒绝（DRAG_HANDLE_STALE），不是"大概还在那儿"的猜测。
+# 8.txt sec. 8 second half: the landing point of one drag must be reusable by the next call ("draw the next segment from where we stopped"), saving the re-location round trip.
+# Same pattern as $script:LastWrite: held by the backend, time-limited, cleared on expiry -- and it NEVER returns a stale value;
+# the caller gets an explicit refusal (DRAG_HANDLE_STALE), not a guess that it is "probably still there".
 $script:LastDrag = $null
 $script:DragTtlMs = Get-PacingEnvInt 'DSH_COMPUTER_USE_DRAG_TTL_MS' 8000 100 120000
 $script:DragGeneration = 0
@@ -560,7 +560,7 @@ function Remove-HeldButton([uint32]$downFlag) {
 }
 
 function Save-HeldState {
-    # §6 ④: what this worker currently believes is held is written where *another process* can
+    # sec. 6 rule 4: what this worker currently believes is held is written where *another process* can
     # read it, because the last-resort release cannot run inside a worker that is being killed.
     #
     # A worker holding a button is the one case where killing it is not enough: the release

@@ -4,9 +4,10 @@
  * It registers one entry into the composer's official `conversation.input.left`
  * list slot, which the shell renders in the tool row between the permission and
  * plan chips and the model selector — the position the reference design shows.
- * The entry is a plain toggle: clicking it flips the capability for the Session
- * this composer belongs to, and the host refuses every `computer_*` tool call
- * while it is off.
+ * The entry is a toggle with one refinement: clicking it flips the capability for the
+ * Session this composer belongs to, and the host refuses every `computer_*` tool call
+ * while it is off — but while a watch session is alive (the chip says 盯屏中), a click
+ * stops the watch first and leaves the capability itself on.
  *
  * The chip talks to its host half over the plugin's own JSON route. Those routes
  * are registered through `ctx.webServer`, so they sit on the same origin as the
@@ -30,18 +31,31 @@ window.__ModuleLoader__.load({
     const LABEL = '电脑操作';
 
     /**
+     * 优-P0-01 授权面三件套的头件：宿主 `admitStateRequest` 要求每个 /computer-use/*
+     * 请求都带这个自定义头，缺了就是 403。跨站 simple request 发不出自定义头，
+     * 预检又不命中 exact 路由，CSRF 在这一层卡死。全部三条 fetch（state 读/写、
+     * watch 停止）共用同一份。
+     */
+    const ADMISSION_HEADER = { 'X-DSH-Computer-Use': '1' };
+
+    /**
      * The control states the host reports, named for a user.
      *
      * A chip that can only say on/off cannot express the state a user most needs to see
      * after pressing stop on something that is mid-batch: "stopping" is not "off" yet, and
      * saying off while the desktop is still being unwound is exactly the lie the review
      * called out.
+     *
+     * `watching`（优-P0-14）：watch 会话存活（含 60s 宽限期的温热）且没有调用在飞、
+     * 也不在撤销排水时——屏幕正在被实时采集，「眼睛睁着必须看得见」。优先级
+     * stopping > busy > watching > ready > observing。
      */
     const CONTROL_LABEL = {
       off: '未开启',
       observing: '仅观察',
       ready: '可操作',
       busy: '执行中',
+      watching: '盯屏中',
       stopping: '停止中',
       stopped: '已停止',
     };
@@ -124,10 +138,6 @@ window.__ModuleLoader__.load({
   background: transparent;
   color: var(--dsw-alias-label-tertiary);
 }
-.dsh-cu-chip .dsh-cu-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .dsh-cu-chip .dsh-cu-dot {
   width: 5px;
   height: 5px;
@@ -142,6 +152,12 @@ window.__ModuleLoader__.load({
 .dsh-cu-chip[data-control="busy"] .dsh-cu-dot,
 .dsh-cu-chip[data-control="stopping"] .dsh-cu-dot {
   background: var(--dsw-alias-state-warning-primary, currentColor);
+  opacity: 1;
+  animation: dsh-cu-pulse 1.1s ease-in-out infinite;
+}
+/* 盯屏中同样脉冲——眼睛睁着就是活动态；但保留 chip 自身颜色（开启时是品牌色），
+   不用警示色：盯屏是正常工作的活，busy/stopping 才是要收敛的排水。 */
+.dsh-cu-chip[data-control="watching"] .dsh-cu-dot {
   opacity: 1;
   animation: dsh-cu-pulse 1.1s ease-in-out infinite;
 }
@@ -160,7 +176,8 @@ window.__ModuleLoader__.load({
 }
 @media (prefers-reduced-motion: reduce) {
   .dsh-cu-chip[data-control="busy"] .dsh-cu-dot,
-  .dsh-cu-chip[data-control="stopping"] .dsh-cu-dot {
+  .dsh-cu-chip[data-control="stopping"] .dsh-cu-dot,
+  .dsh-cu-chip[data-control="watching"] .dsh-cu-dot {
     animation: none;
   }
 }
@@ -200,6 +217,9 @@ window.__ModuleLoader__.load({
     function statusFrom(payload) {
       const control = payload.control ?? {};
       const lastAction = control.lastAction ?? null;
+      // 优-P0-14：宿主 controlState 里的原始盯屏块。宿主可能已把 control.state 折成
+      // 'watching'，也可能只给这个块；客户端按同一优先级自行折叠，两个版本行为一致。
+      const watch = control.watch ?? null;
       return {
         phase: 'ready',
         enabled: payload.enabled === true,
@@ -209,6 +229,11 @@ window.__ModuleLoader__.load({
         controlDetail: lastAction !== null && typeof lastAction.what === 'string' ? lastAction.what : '',
         controlOwner: typeof control.lease?.owner === 'string' ? control.lease.owner : '',
         inFlight: Number.isFinite(control.inFlight) ? Number(control.inFlight) : 0,
+        // 盯屏会话存活（含 60s 宽限期的温热）：以「会话存活」而非「正在出图」为判据，
+        // 模型思考的间隙期不闪烁。
+        watchAlive: watch !== null && watch.alive === true,
+        watchSeconds: watch !== null && Number.isFinite(watch.seconds) ? Number(watch.seconds) : 0,
+        watchSource: watch !== null && typeof watch.source === 'string' ? watch.source : '',
         // Whether the *last switch attempt* failed. Kept separate from `phase` because the two
         // questions are different: "what position is the capability in" can be answered again by
         // a read, while "your click did not take" stays true until the next successful switch.
@@ -233,11 +258,27 @@ window.__ModuleLoader__.load({
         controlDetail: '',
         controlOwner: '',
         inFlight: 0,
+        watchAlive: false,
+        watchSeconds: 0,
+        watchSource: '',
         switchFailed: false,
         note: unmounted
           ? '主机半未加载：/computer-use/state 返回 404'
           : String(error?.message ?? error),
       };
+    }
+
+    /**
+     * 已盯时长的人话（盯屏标签与提示用）：小于一分钟说秒，小于一小时说分钟，
+     * 再长说小时+分。0 或未知返回空串，不占位置。
+     */
+    function formatWatchDuration(seconds) {
+      if (!Number.isFinite(seconds) || seconds <= 0) return '';
+      const whole = Math.floor(seconds);
+      if (whole < 60) return `${whole} 秒`;
+      const minutes = Math.floor(whole / 60);
+      if (minutes < 60) return `${minutes} 分钟`;
+      return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`;
     }
 
     /**
@@ -287,7 +328,7 @@ window.__ModuleLoader__.load({
     async function requestState(sessionId, signal) {
       const response = await fetch(`${ROUTE}/state?sessionId=${encodeURIComponent(sessionId)}`, {
         signal,
-        headers: { accept: 'application/json' },
+        headers: { accept: 'application/json', ...ADMISSION_HEADER },
       });
       const payload = await readJson(response);
       if (!response.ok) throw replyFailure(response, payload, `HTTP ${response.status}`);
@@ -309,12 +350,33 @@ window.__ModuleLoader__.load({
     async function requestToggle(sessionId, enabled) {
       const response = await fetch(`${ROUTE}/state`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...ADMISSION_HEADER },
         body: JSON.stringify({ sessionId, enabled }),
       });
       const payload = await readJson(response);
       if (!response.ok) throw replyFailure(response, payload, `HTTP ${response.status}`);
       if (payload?.ok === false) throw replyFailure(response, payload, 'the host refused the switch');
+      if (typeof payload?.enabled !== 'boolean') throw new Error('the host did not report an enabled flag');
+      return payload;
+    }
+
+    /**
+     * Stop the live watch session (优-P0-14「盯屏中」态的点击动作).
+     *
+     * 只闭眼、不动授权：盯屏是「授权开启」之上的一个活动，停掉它不该把授权一起收回。
+     * 回执是与 state 相同形状的完整权威状态，芯片照旧以回执为准。
+     * @param sessionId - the Session the chip belongs to.
+     * @returns the host's payload.
+     */
+    async function requestWatchStop(sessionId) {
+      const response = await fetch(`${ROUTE}/watch`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...ADMISSION_HEADER },
+        body: JSON.stringify({ sessionId, action: 'stop' }),
+      });
+      const payload = await readJson(response);
+      if (!response.ok) throw replyFailure(response, payload, `HTTP ${response.status}`);
+      if (payload?.ok === false) throw replyFailure(response, payload, 'the host refused to stop watching');
       if (typeof payload?.enabled !== 'boolean') throw new Error('the host did not report an enabled flag');
       return payload;
     }
@@ -338,8 +400,16 @@ window.__ModuleLoader__.load({
      */
     function ComputerUseChip(props) {
       const sessionId = props?.sessionId;
-      const [status, setStatus] = React.useState({ phase: 'loading', enabled: false, supported: true, note: '', control: '', controlDetail: '', controlOwner: '', inFlight: 0, switchFailed: false });
+      const [status, setStatus] = React.useState({ phase: 'loading', enabled: false, supported: true, note: '', control: '', controlDetail: '', controlOwner: '', inFlight: 0, watchAlive: false, watchSeconds: 0, watchSource: '', switchFailed: false });
       const current = React.useRef({ mounted: false, epoch: 0, readId: 0, toggling: false, read: null });
+
+      // 优-P0-14 盯屏折叠：宿主可能已把 control.state 折成 'watching'，也可能只给
+      // control.watch 原始块；无论哪种，「watch 会话存活且非 busy/stopping」时芯片
+      // 都说盯屏中——优先级 stopping>busy>watching>ready>observing 在客户端兜底，
+      // 宿主规格落地前后行为一致（缺 watch 块时 watchAlive 为 false，一切照旧）。
+      const controlState = typeof status.control === 'string' ? status.control : '';
+      const watching = status.watchAlive === true && controlState !== 'busy' && controlState !== 'stopping';
+      const effectiveControl = watching ? 'watching' : controlState;
 
       /**
        * Read the state and, if this read is still the current one, show it.
@@ -411,7 +481,7 @@ window.__ModuleLoader__.load({
         ref.toggling = false;
         ref.read?.abort();
         ref.read = null;
-        setStatus({ phase: 'loading', enabled: false, supported: true, note: '', control: '', controlDetail: '', controlOwner: '', inFlight: 0, switchFailed: false });
+        setStatus({ phase: 'loading', enabled: false, supported: true, note: '', control: '', controlDetail: '', controlOwner: '', inFlight: 0, watchAlive: false, watchSeconds: 0, watchSource: '', switchFailed: false });
         void readState();
         return () => {
           ref.mounted = false;
@@ -455,7 +525,8 @@ window.__ModuleLoader__.load({
           }
           void readState().then((next) => {
             if (stopped) return;
-            const inMotion = next !== undefined && (next.control === 'busy' || next.control === 'stopping');
+            // 盯屏中同样快读：已盯时长在走、模型也可能随时停看；轮询是本地请求，零 token。
+            const inMotion = next !== undefined && (next.control === 'busy' || next.control === 'stopping' || next.watchAlive === true);
             arm(inMotion ? CONTROL_POLL_MS : IDLE_SYNC_MS);
           });
         };
@@ -507,6 +578,8 @@ window.__ModuleLoader__.load({
         if (status.supported === false) return;
         if (ref.toggling) return;
         if (status.phase === 'loading') return;
+        // 优-P0-14：停止排水期间禁止再提交——撤销正在落地，再一次翻转只会和它在半路相撞。
+        if (controlState === 'stopping') return;
         ref.toggling = true;
 
         const next = !status.enabled;
@@ -536,7 +609,47 @@ window.__ModuleLoader__.load({
           .finally(() => {
             ref.toggling = false;
           });
-      }, [sessionId, status.enabled, status.phase, status.supported, readState]);
+      }, [sessionId, status.enabled, status.phase, status.supported, controlState, readState]);
+
+      /**
+       * Stop the watch session, leaving the capability on (优-P0-14).
+       *
+       * 复用 toggle 的全部纪律：`toggling` 锁同步落下（同一渲染里的第二击被拒）、
+       * 在飞的读先作废（慢 GET 不能拿旧值重画）、回执是权威（答复到了才改画面）。
+       * 失败走 switchFailure 确认读：「这次点击没生效」必须留在屏幕上，不能被下一次
+       * 轮询悄悄抹掉。
+       */
+      const stopWatch = React.useCallback(() => {
+        const ref = current.current;
+        if (sessionId === undefined || sessionId === null || !ref.mounted) return;
+        if (status.supported === false) return;
+        if (ref.toggling) return;
+        if (status.phase === 'loading') return;
+        if (controlState === 'stopping') return;
+        ref.toggling = true;
+
+        ref.readId += 1;
+        ref.read?.abort();
+        ref.read = null;
+
+        requestWatchStop(sessionId)
+          .then((payload) => {
+            if (!ref.mounted) return;
+            setStatus(statusFrom(payload));
+          })
+          .catch((error) => {
+            console.error('[computer-use] could not stop the watch session:', error);
+            if (!ref.mounted) return;
+            const note = `停止盯屏没有成功：${String(error?.message ?? error)}`;
+            // Let the confirming read through, then ask the host what actually happened —
+            // same discipline as a failed switch: never guess the old value back.
+            ref.toggling = false;
+            void readState({ switchFailure: note });
+          })
+          .finally(() => {
+            ref.toggling = false;
+          });
+      }, [sessionId, status.supported, status.phase, controlState, readState]);
 
 
       if (sessionId === undefined || sessionId === null) return null;
@@ -545,13 +658,20 @@ window.__ModuleLoader__.load({
       const dataState = unsupported
         ? 'unsupported'
         : status.phase === 'ready' ? (status.enabled ? 'on' : 'off') : status.phase;
-      const controlState = typeof status.control === 'string' ? status.control : '';
-      const controlLabel = CONTROL_LABEL[controlState] ?? '';
+      const controlLabel = CONTROL_LABEL[effectiveControl] ?? '';
+      const watchDuration = formatWatchDuration(status.watchSeconds);
+      const watchSourceText = status.watchSource === 'screen' ? '整个屏幕'
+        : status.watchSource === 'camera' ? '摄像头'
+        : status.watchSource === 'file' ? '文件回放'
+        : status.watchSource === 'obs' ? 'OBS 源'
+        : '';
       // Only the control states worth saying out loud go into the tooltip: "可操作" is the
       // normal case and would just be noise next to "已开启".
-      const controlSuffix = status.enabled && (controlState === 'busy' || controlState === 'stopping' || controlState === 'stopped')
-        ? `（${controlLabel}${controlState === 'busy' && status.controlDetail !== '' ? `：${status.controlDetail}` : ''}${status.inFlight > 1 ? `，${status.inFlight} 个调用` : ''}）`
+      const controlSuffix = status.enabled && (effectiveControl === 'busy' || effectiveControl === 'stopping' || effectiveControl === 'stopped' || effectiveControl === 'watching')
+        ? `（${controlLabel}${effectiveControl === 'busy' && status.controlDetail !== '' ? `：${status.controlDetail}` : ''}${effectiveControl === 'watching' && watchDuration !== '' ? `：已盯 ${watchDuration}` : ''}${status.inFlight > 1 ? `，${status.inFlight} 个调用` : ''}）`
         : '';
+      // 芯片保持纯图标（用户明确要求：删文字只留图标+状态点）；状态细节全部走 tooltip
+      // （controlSuffix）与 aria-label，状态由 data-control 属性驱动 CSS 让状态点变色表达。
       // "Your click did not take" and "the position is X" are two facts, and the chip can hold
       // both: a confirming read may re-establish the position, but it must not erase the failure.
       const switchFailed = status.switchFailed === true;
@@ -569,9 +689,11 @@ window.__ModuleLoader__.load({
               ? `${LABEL}：这次切换没有成功（${status.note}）。主机现在报告的是「${position}」——芯片显示的就是它。点击可以再试一次。`
               : status.phase === 'error'
                 ? `${LABEL}：未能确认状态（${status.note}）。芯片上显示的仍是最后一次确认过的状态，点击可以重试。`
-                : status.enabled
-                  ? `${LABEL}${controlSuffix}：已开启。模型可以截屏、移动鼠标、点击和输入。点击关闭。`
-                  : `${LABEL}：已关闭。点击后模型可以在本会话操作这台电脑（截屏、鼠标、键盘、窗口与 UI 自动化）。`;
+                : watching
+                  ? `${LABEL}${controlSuffix}：屏幕正在被实时采集${watchSourceText === '' ? '' : `（${watchSourceText}）`}。点击停止盯屏——授权保持开启；想关闭授权，停止之后再点一次。`
+                  : status.enabled
+                    ? `${LABEL}${controlSuffix}：已开启。模型可以截屏、移动鼠标、点击和输入。点击关闭。`
+                    : `${LABEL}：已关闭。点击后模型可以在本会话操作这台电脑（截屏、鼠标、键盘、窗口与 UI 自动化）。`;
 
       return React.createElement(
         'button',
@@ -579,7 +701,7 @@ window.__ModuleLoader__.load({
           type: 'button',
           className: 'dsh-cu-chip',
           'data-state': dataState,
-          'data-control': controlState,
+          'data-control': effectiveControl,
           // Present only while the last switch attempt failed, so the dot can say so even when the
           // position itself is confirmed and the chip is otherwise rendering as on/off.
           'data-warning': switchFailed ? 'switch' : undefined,
@@ -590,10 +712,12 @@ window.__ModuleLoader__.load({
               ? `${LABEL}（主机半未加载）`
               : switchFailed
                 ? `${LABEL}（切换失败，当前${position}）`
-                : `${LABEL}${status.enabled ? `（已开启${controlSuffix === '' ? '' : controlSuffix.slice(1, -1)}）` : '（已关闭）'}`,
+                : watching
+                  ? `${LABEL}（盯屏中，点击停止盯屏）`
+                  : `${LABEL}${status.enabled ? `（已开启${controlSuffix === '' ? '' : controlSuffix.slice(1, -1)}）` : '（已关闭）'}`,
           title,
-          disabled: unsupported || status.phase === 'loading' || status.phase === 'busy',
-          onClick: toggle,
+          disabled: unsupported || status.phase === 'loading' || status.phase === 'busy' || effectiveControl === 'stopping',
+          onClick: watching ? stopWatch : toggle,
         },
         React.createElement(MonitorIcon, { key: 'icon' }),
         React.createElement('span', { className: 'dsh-cu-dot', key: 'dot' }),

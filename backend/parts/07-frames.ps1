@@ -288,7 +288,7 @@ function Test-LandingGuard([int64]$targetHwnd, [int]$targetPid, [int]$x, [int]$y
     # old check lived inside the "the window moved" branch, which meant a still window that
     # had been covered by something else passed the guard and took the input.
     #
-    # A pid is not an identity (方案 §3.3 第 3 条: 相同 PID 不足以证明相同窗口): "same process"
+    # A pid is not an identity (plan doc sec. 3.3 item 3: the same PID does not prove the same window): "same process"
     # does not make it the same window, and a second top-level window of the same application
     # sitting over the target would take the input while the receipt said the target had been
     # verified. The outcomes are therefore:
@@ -311,7 +311,7 @@ function Test-LandingGuard([int64]$targetHwnd, [int]$targetPid, [int]$x, [int]$y
         return [ordered]@{ ok = $true; how = 'root'; hit = $hit }
     }
     # An explicit declaration is the most specific thing a caller can say about what it expects
-    # to be under the point, so it is answered first (方案 §3.3 第 3 条: a transition the caller
+    # to be under the point, so it is answered first (plan doc sec. 3.3 item 3: a transition the caller
     # named is followed rather than refused).
     $allowed = $false
     if ($null -ne $allowWindows) {
@@ -428,8 +428,8 @@ function Get-FrameTransform($frame, [double]$ax, [double]$ay) {
     $ratioX = [double]$crop.width / [double]$encodedWidth
     $ratioY = [double]$crop.height / [double]$encodedHeight
     # Integer pixel indices, nearest neighbour, one rounding per axis at the very end of the
-    # chain: image pixel i stands for the source pixels around source pixel i × ratio, and the
-    # nearest one is what it is. This keeps a 1:1 frame exact (i × 1 is i), keeps a half-scale
+    # chain: image pixel i stands for the source pixels around source pixel i * ratio, and the
+    # nearest one is what it is. This keeps a 1:1 frame exact (i * 1 is i), keeps a half-scale
     # frame's pixel i in the block of source pixels it came from, and -- unlike adding half a
     # pixel before multiplying -- does not drift by one on every ratio above 1.
     $sx = [double]$crop.x + [Math]::Round(($ex * $ratioX), [System.MidpointRounding]::AwayFromZero)
@@ -460,7 +460,7 @@ function Assert-FrameContentFresh($frame, [bool]$verify) {
 function Test-FrameLive([string]$frameId, [object]$Options = $null) {
     # Is this frame still the thing it was? -- asked with no point involved.
     #
-    # Split out of Resolve-FramePoint (§5.3). Once a gesture's points have been projected they
+    # Split out of Resolve-FramePoint (sec. 5.3). Once a gesture's points have been projected they
     # are *desktop* coordinates, so an in-flight check cannot go through a function whose input
     # is an image pixel: the drag used to hand desktop waypoints back to Resolve-FramePoint,
     # which projected them a second time. A perfectly usable frame then failed a bounds test and
@@ -585,7 +585,7 @@ function Resolve-FramePoint([string]$frameId, [int]$px, [int]$py, [object]$Optio
     $note = "$($projected.note)"
     $guard = $null
     # The frame and the window it came from, checked once, without involving this point
-    # (§5.3): the projection above is the only conversion this coordinate ever gets.
+    # (sec. 5.3): the projection above is the only conversion this coordinate ever gets.
     $live = Test-FrameLive $frameId $Options
     if ($live.ok -ne $true) { return @{ ok = $false; error = "$($live.error)" } }
     if ($live.screen -eq $true) {
@@ -616,7 +616,7 @@ function Resolve-FramePoint([string]$frameId, [int]$px, [int]$py, [object]$Optio
     $guard = Test-LandingGuard ([int64]$frame.hwnd) ([int]$frame.pid) $x $y $allowWindows
     $activated = $false
     if ($guard.ok -ne $true -and $allowActivate) {
-        # One bounded attempt at recovery (方案 §3.3 第 5 条): bring the target forward and then
+        # One bounded attempt at recovery (plan doc sec. 3.3 item 5): bring the target forward and then
         # *look again* rather than assuming the activation worked -- SetForegroundWindow is
         # subject to the system's own rules and can quietly do nothing. Exactly one attempt: a
         # recovery that keeps trying is a recovery that hides the problem, and the receipt says
@@ -666,7 +666,7 @@ function Get-FrameReceipt($frame, [int]$px, [int]$py, [int]$x, [int]$y, [int]$dr
     return $receipt
 }
 function Do-Click([object]$Arg) {
-    # Nothing is sent to the desktop once the call's budget is gone (§5.7): the refusal lands
+    # Nothing is sent to the desktop once the call's budget is gone (sec. 5.7): the refusal lands
     # before the button goes down, so a spent call cannot still move the pointer or click.
     Assert-CanSend 'before the click'
     $x = [int]$Arg.x
@@ -689,6 +689,19 @@ function Do-Click([object]$Arg) {
     $modifierVks = @()
     if ($modifierChord -ne '') { $modifierVks = Get-KeyVkList $modifierChord }
     $preferA11y = ($Arg.preferA11y -ne $false)
+
+    # Click hold time (OPT-P0-13): applications that poll GetAsyncKeyState instead of
+    # reading the message queue can miss a down/up pair delivered inside one SendInput
+    # batch -- both events land in the same poll tick and the app never observes the
+    # button down. The pair is therefore split into two sends with a hold between them
+    # (default 60 ms; DSH_COMPUTER_USE_CLICK_HOLD_MS tunes it, 0 restores back-to-back).
+    $clickHoldMs = 60
+    if ($null -ne $env:DSH_COMPUTER_USE_CLICK_HOLD_MS -and "$($env:DSH_COMPUTER_USE_CLICK_HOLD_MS)" -ne '') {
+        $parsedHold = 0
+        if ([int]::TryParse("$($env:DSH_COMPUTER_USE_CLICK_HOLD_MS)", [ref]$parsedHold)) {
+            $clickHoldMs = [Math]::Max(0, [Math]::Min(500, $parsedHold))
+        }
+    }
 
     # a11y-first covers the plain single left click only. A chorded click or a double
     # click is a pointer gesture by definition, and there is no accessibility
@@ -725,13 +738,25 @@ function Do-Click([object]$Arg) {
     try {
         Do-MouseMove $x $y $true
         $flags = Get-ButtonFlags $button
-        $events = @()
+        # down and up go out as separate sends with the hold between them (OPT-P0-13),
+        # and successive clicks are spaced 80 ms: a double click then totals
+        # 60+80+60 = 200 ms, still inside the system double-click window. The button
+        # is registered as held across each hold so a worker killed in that window
+        # still gets the independent release (same sec. 6 rule 4 rule the drag follows);
+        # the record is dropped only once the release is actually delivered.
+        $sent = 0
+        $expected = 2 * $clicks
         for ($i = 0; $i -lt $clicks; $i++) {
-            $events += [DshNative]::Mouse(0, 0, 0, $flags[0])
-            $events += [DshNative]::Mouse(0, 0, 0, $flags[1])
+            $sentDown = [int][DshNative]::Send(@([DshNative]::Mouse(0, 0, 0, $flags[0])))
+            $sent += $sentDown
+            if ($sentDown -gt 0) { Add-HeldButton ([uint32]$flags[0]) }
+            if ($clickHoldMs -gt 0) { Start-Sleep -Milliseconds $clickHoldMs }
+            $sentUp = [int][DshNative]::Send(@([DshNative]::Mouse(0, 0, 0, $flags[1])))
+            $sent += $sentUp
+            if ($sentUp -gt 0 -and $sentDown -gt 0) { Remove-HeldButton ([uint32]$flags[0]) }
+            if ($i -lt ($clicks - 1)) { Start-Sleep -Milliseconds 80 }
         }
-        $sent = [DshNative]::Send($events)
-        $delivery = Assert-InputDelivered $sent $events.Count "the click ($clicks press/release pair(s))" 'the click'
+        $delivery = Assert-InputDelivered $sent $expected "the click ($clicks press/release pair(s))" 'the click'
     } finally {
         # Released in a finally: a modifier left down because the click threw would
         # change the meaning of everything the caller does next.
@@ -746,18 +771,18 @@ function Do-Click([object]$Arg) {
 
 function Do-Drag([object]$Arg) {
     # A drag is the longest input there is, and the deadline is checked before the button goes
-    # down *and* at every waypoint -- a gesture that is stopped half way always lets go (§5.7).
+    # down *and* at every waypoint -- a gesture that is stopped half way always lets go (sec. 5.7).
     Assert-CanSend 'before the drag'
     $sx = [int]$Arg.fromX
     $sy = [int]$Arg.fromY
     $ex = [int]$Arg.toX
     $ey = [int]$Arg.toY
 
-    # ---------------------------------------------------------------- continuation (§8 后半)
+    # ---------------------------------------------------------------- continuation (sec. 8 second half)
     #
-    # "从刚才那里再画一段"：起点取上一次拖拽的落点，省掉重新定位的往返。句柄由后端持有、带有效期，
-    # 过期或不匹配时**明确拒绝**（DRAG_HANDLE_MISSING / DRAG_HANDLE_STALE），绝不猜一个附近的点接着画；
-    # 拒绝发生在任何输入发出之前（action_sent=false）。
+    # "Draw the next segment from where we stopped": the start is the landing point of the previous drag, saving the re-location round trip. The handle is held by the backend with a time limit;
+    # an expired or mismatched handle is refused outright (DRAG_HANDLE_MISSING / DRAG_HANDLE_STALE) -- a nearby point is never guessed and drawn from;
+    # the refusal happens before any input is sent (action_sent=false).
     $fromLast = ($null -ne $Arg.fromLast) -and ($Arg.fromLast -eq $true -or "$($Arg.fromLast)" -eq 'true')
     $continueFrom = ''
     if ($null -ne $Arg.continueFrom) { $continueFrom = "$($Arg.continueFrom)" }
@@ -770,7 +795,7 @@ function Do-Drag([object]$Arg) {
         $sy = [int]$handle.handle.y
     }
 
-    # ---------------------------------------------------------------- path form (§8)
+    # ---------------------------------------------------------------- path form (sec. 8)
     #
     # A path is a shape, not a straight line: drawing, walking around an obstacle, or a
     # selection that has to pass through a particular cell. It is normalised before anything
@@ -800,6 +825,15 @@ function Do-Drag([object]$Arg) {
         $durationMs = [int]$Arg.durationMs
         if ($durationMs -lt 100) { $durationMs = 100 }
         if ($durationMs -gt 5000) { $durationMs = 5000 }
+    }
+    # Drop-point dwell before the release (OPT-P0-12), default 120 ms;
+    # DSH_COMPUTER_USE_DRAG_DWELL_MS tunes it, 0 disables.
+    $dragDwellMs = 120
+    if ($null -ne $env:DSH_COMPUTER_USE_DRAG_DWELL_MS -and "$($env:DSH_COMPUTER_USE_DRAG_DWELL_MS)" -ne '') {
+        $parsedDwell = 0
+        if ([int]::TryParse("$($env:DSH_COMPUTER_USE_DRAG_DWELL_MS)", [ref]$parsedDwell)) {
+            $dragDwellMs = [Math]::Max(0, [Math]::Min(2000, $parsedDwell))
+        }
     }
 
     # Both ends of a gesture can be given in the image coordinates of a capture, on the
@@ -845,7 +879,7 @@ function Do-Drag([object]$Arg) {
     # What the gesture walks once the button is down, and how long it spends between
     # waypoints. The straight line keeps its old `steps` interpolation; a path is sampled by
     # arc length over its whole duration, so a long segment and a short one both get the
-    # motion they need instead of each segment paying the same fixed wait (§8).
+    # motion they need instead of each segment paying the same fixed wait (sec. 8).
     $waypoints = @()
     $paceMs = 12
     $sampleCount = 0
@@ -915,9 +949,9 @@ function Do-Drag([object]$Arg) {
                 Assert-NotCancelled "during the drag (step $travelled of $($waypoints.Count))"
                 # The window the gesture was projected against has to still be there: a
                 # window that closed mid-drag turns the rest of the path into coordinates on
-                # whatever is behind it (§8 asks for the target to be checked while it runs).
+                # whatever is behind it (sec. 8 asks for the target to be checked while it runs).
                 #
-                # What is checked here is the *frame*, not a point (§5.3): `$waypoint` is
+                # What is checked here is the *frame*, not a point (sec. 5.3): `$waypoint` is
                 # already a desktop coordinate, so it must not go back through the image-space
                 # resolver -- that projected it a second time, and a live frame on a scaled or
                 # offset window was refused as stale while a changed frame could slip through.
@@ -933,6 +967,15 @@ function Do-Drag([object]$Arg) {
                 Do-MouseMove ([int]$waypoint.x) ([int]$waypoint.y)
                 Start-Sleep -Milliseconds $paceMs
             }
+            # Drop-site settle + dwell before the button goes up (OPT-P0-12): HTML5
+            # drag-and-drop and owner-drawn lists decide a drop from the last
+            # drag-over they processed, and a release that lands in the same tick as
+            # the final move is silently dropped. The settle move re-asserts the
+            # endpoint with the cursor-settle read-back ($wait=$true), then the dwell
+            # gives the target a beat to register the hover. Both run only on the
+            # normal path -- a cancelled drag releases immediately in the finally.
+            Do-MouseMove $ex $ey $true
+            if ($dragDwellMs -gt 0) { Wait-Cancellable $dragDwellMs }
         } finally {
             # The release belongs in the finally, not after the loop. When a move step
             # threw, the old code jumped straight to forgetting the button was held --
@@ -948,8 +991,8 @@ function Do-Drag([object]$Arg) {
         if ($modifierVks.Count -gt 0) { [void](Send-Modifiers $modifierVks $false) }
     }
     Set-WriteStamp -What 'drag'
-# 8.txt §8 后半：把这次拖拽的落点记进句柄，供下一次用 continue_from/from_last 接着画（过期即失效）。
-# 窗口暂时不记（0 = 未知）：句柄的"换窗口要拒绝"要等续画侧的读取实现后一起接上，见台账 §4.1。
+# 8.txt sec. 8 second half: record this drag's landing point into the handle, so the next call can continue from it with continue_from/from_last (expires on timeout).
+# The window is not recorded for now (0 = unknown): the handle's "refuse when the window changed" rule is wired up together with the continuation-side read; see ledger sec. 4.1.
 [void]($script:LastDrag = Set-DragHandle -x $ex -y $ey)
     $value = [ordered]@{ from = [ordered]@{ x = $sx; y = $sy }; to = [ordered]@{ x = $ex; y = $ey }; steps = $steps }
     if ($path.Count -gt 1) {
@@ -957,7 +1000,7 @@ function Do-Drag([object]$Arg) {
     }
     if ($modifierChord -ne '') { $value.modifiers = $modifierChord }
     if ($null -ne $frameReceipt) { $value.frame = $frameReceipt }
-    # 8.txt §8 后半：把句柄 id 交给调用方 —— 下一次要"接着画"就引用它（或直接 from_last）。
+    # 8.txt sec. 8 second half: hand the handle id to the caller -- to "keep drawing" next time, reference it (or just use from_last).
     if ($null -ne $script:LastDrag) { $value['handle'] = "$($script:LastDrag.id)" }
     return $value
 }
@@ -1037,19 +1080,32 @@ function Do-Type([object]$Arg) {
     $all = $events.ToArray()
     $sent = 0
     $expectedEvents = $all.Length
-    for ($i = 0; $i -lt $all.Length; $i += $chunk) {
-        # One check per chunk, not per character: the point is that a cancel stops a
-        # long paste within a few milliseconds, without paying a file stat per key.
-        Assert-NotCancelled "while typing (character $i of $($all.Length / 2))"
-        Assert-WithinDeadline "while typing (character $i of $($all.Length / 2))"
-        $len = [Math]::Min($chunk, $all.Length - $i)
-        $slice = New-Object DshNative+INPUT[] $len
-        [Array]::Copy($all, $i, $slice, 0, $len)
-        $sent += [DshNative]::Send($slice)
-        if ($delay -gt 0) { Start-Sleep -Milliseconds $delay }
+    if ($delay -le 0) {
+        for ($i = 0; $i -lt $all.Length; $i += $chunk) {
+            # One check per chunk, not per character: the point is that a cancel stops a
+            # long paste within a few milliseconds, without paying a file stat per key.
+            Assert-NotCancelled "while typing (character $i of $($all.Length / 2))"
+            Assert-WithinDeadline "while typing (character $i of $($all.Length / 2))"
+            $len = [Math]::Min($chunk, $all.Length - $i)
+            $slice = New-Object DshNative+INPUT[] $len
+            [Array]::Copy($all, $i, $slice, 0, $len)
+            $sent += [DshNative]::Send($slice)
+        }
+    } else {
+        # delayMs is a per-key delay (OPT-P1-06, matching the tool contract's
+        # per-character wording): a delayed type sends each key on its own and sleeps
+        # between keys. Events are laid out as down+up pairs, two per character, so
+        # stepping by two walks keys. The cancel check rides along per key -- a caller
+        # that asked for a slow type wants a cancel to land promptly.
+        for ($i = 0; $i -lt $all.Length; $i += 2) {
+            Assert-NotCancelled "while typing (character $([int]($i / 2)) of $($all.Length / 2))"
+            Assert-WithinDeadline "while typing (character $([int]($i / 2)) of $($all.Length / 2))"
+            $sent += [DshNative]::Send(@($all[$i], $all[$i + 1]))
+            if (($i + 2) -lt $all.Length) { Start-Sleep -Milliseconds $delay }
+        }
     }
     # Counted, not floored: a string that lost a chunk is a partial action, and the caller is
-    # told how much of it arrived rather than being told "typed" (§6).
+    # told how much of it arrived rather than being told "typed" (sec. 6).
     $delivery = Assert-InputDelivered $sent $expectedEvents "typing $count character(s)" 'the typed text'
     Set-WriteStamp -What 'type' -Hwnd $Arg.intoHwnd
     return [ordered]@{ typed = $count; events = $sent; expectedEvents = $expectedEvents; skipped = $skipped; foreground = (Get-ForegroundInfo) }
@@ -1083,7 +1139,7 @@ function Send-Modifiers([int[]]$vks, [bool]$down) {
     }
     $sent = [DshNative]::Send($events)
     # A modifier that only half goes down (or only half comes back up) is the worst partial
-    # send there is: the next action would run with shift or ctrl silently held (§6).
+    # send there is: the next action would run with shift or ctrl silently held (sec. 6).
     [void](Assert-InputDelivered $sent $events.Count "the modifier chord $(if ($down) { 'down' } else { 'up' })" 'the modifier')
     return $sent
 }
@@ -1123,7 +1179,7 @@ function Do-Key([object]$Arg) {
         }
         $sentDown = [DshNative]::Send($down.ToArray())
         # Half a chord held down is not "a key that was pressed": the caller is told how much
-        # of it went down, and the release below still runs (§6).
+        # of it went down, and the release below still runs (sec. 6).
         $deliveryDown = Assert-InputDelivered $sentDown $down.Count "the held key chord '$chord' (down)" 'the key hold'
         foreach ($vk in $vks) { Add-HeldKey $vk }
         try {
@@ -1233,7 +1289,7 @@ function Send-CtrlV {
 }
 
 function Get-TextFingerprint([string]$text) {
-    # An auxiliary check only. §6 is explicit that a fingerprint must not be used to decide
+    # An auxiliary check only. sec. 6 is explicit that a fingerprint must not be used to decide
     # *who* changed the clipboard -- the sequence number answers "did it change", and that is
     # the question a borrow needs answered.
     if ([string]::IsNullOrEmpty($text)) { return '' }
@@ -1250,7 +1306,7 @@ function Get-ClipboardShape {
     #
     # The formats matter as much as the text. "The text was read back" is not "the clipboard
     # was saved": an image, a file list or rich markup survives no round trip through this
-    # path, and a caller told "saved" would lose it without ever knowing (8.txt §6).
+    # path, and a caller told "saved" would lose it without ever knowing (8.txt sec. 6).
     $last = $null
     for ($i = 0; $i -lt $CLIPBOARD_ATTEMPTS; $i++) {
         try {
@@ -1268,7 +1324,7 @@ function Get-ClipboardShape {
                 ok         = $true
                 present    = $present
                 # An empty clipboard and "content whose text is empty" are different facts and
-                # are kept apart here on purpose (8.txt §6).
+                # are kept apart here on purpose (8.txt sec. 6).
                 empty      = (-not $present) -or (@($formats).Count -eq 0)
                 isText     = $isText
                 text       = $text
@@ -1297,7 +1353,7 @@ function Get-ClipboardShape {
 }
 
 function Get-PasteVerification([object]$Arg, [string]$text) {
-    # A postcondition for a paste, when the caller can name a readable control (§6): a fixed
+    # A postcondition for a paste, when the caller can name a readable control (sec. 6): a fixed
     # wait is a fallback, never a proof, but "the text is in that control" is a proof. $null
     # when the caller asked for no verification.
     $verify = Get-ArgMember $Arg 'verify'
@@ -1361,12 +1417,12 @@ function Get-PasteVerification([object]$Arg, [string]$text) {
 
 function Do-Paste([object]$Arg) {
     # The clipboard is touched by a paste, so it is input like any other: refused before the
-    # borrow starts rather than half way through restoring it (§5.7).
+    # borrow starts rather than half way through restoring it (sec. 5.7).
     Assert-CanSend 'before the paste'
     # Typing goes through SendInput one character at a time, which some editors and
     # every IME-hostile app mangle; a paste is one atomic gesture and is the only
     # reliable way to move a long or non-ASCII string into a control. The user's own
-    # clipboard is borrowed first and put back afterwards (8.txt §6):
+    # clipboard is borrowed first and put back afterwards (8.txt sec. 6):
     #
     #   verify the receiver -> read the clipboard's formats and the content that can be
     #   restored -> record the sequence number -> write the text -> record the sequence
@@ -1475,13 +1531,13 @@ function Do-Paste([object]$Arg) {
     return $receipt
 }
 
-# ---------------------------------------------------------------- app discovery (§9)
+# ---------------------------------------------------------------- app discovery (sec. 9)
 #
 # Naming an application is fuzzy by nature ("the chat app"), and the signals that make a
 # guess good are expensive to collect per call: a recursive Start-menu scan, the shell's own
 # app table, a process snapshot and a registry read. They are collected once, kept for a
 # bounded time, and refreshed on request -- never per candidate, and never with one
-# `Get-ItemProperty` per item (which §9 names as the way to spend more on the interpreter
+# `Get-ItemProperty` per item (which sec. 9 names as the way to spend more on the interpreter
 # than the answer is worth).
 
 $script:AppDiscovery = @{
@@ -1519,7 +1575,7 @@ function Get-AppDiscovery([bool]$refresh = $false) {
     if ($refresh -or $null -eq $state.usage -or ($now - $state.usageAt).TotalSeconds -gt 120) {
         # One batched read of the whole key. The values are per-application switch counts the
         # shell keeps; a value that is not a number is left out rather than counted as zero
-        # (§9: missing must read as unknown, not as "never used").
+        # (sec. 9: missing must read as unknown, not as "never used").
         $usage = @{}
         $known = $false
         try {
@@ -1545,7 +1601,7 @@ function Get-AppDiscovery([bool]$refresh = $false) {
 
 function Get-RunningProcessMap {
     # name (lower-case, no extension) -> pids. Cached for a couple of seconds: `isRunning` is
-    # worth having, and one Get-Process per candidate is the per-item cost §9 warns about.
+    # worth having, and one Get-Process per candidate is the per-item cost sec. 9 warns about.
     $now = [DateTime]::UtcNow
     $state = $script:AppDiscovery
     if ($null -ne $state.processes -and ($now - $state.processesAt).TotalSeconds -lt 2.5) { return $state.processes }
@@ -1581,7 +1637,7 @@ function Get-NameMatchScore([string]$name, [string]$target) {
 function Get-AppUsageCountFor([string]$exeName, [string]$label, $discovery) {
     # The switch count the shell keeps for this application, when it keeps one. "Unknown" is
     # returned as unknown: the registry may not have the key, may not have this app, or may
-    # hold a value this build cannot read, and none of those mean "never used" (§9).
+    # hold a value this build cannot read, and none of those mean "never used" (sec. 9).
     $result = @{ count = 0; known = $false }
     if ($null -eq $discovery.usage -or -not $discovery.usageKnown) { return $result }
     $keys = @()
@@ -1599,7 +1655,7 @@ function Get-AppUsageCountFor([string]$exeName, [string]$label, $discovery) {
 }
 
 function Add-LaunchSignals($resolution, [string]$basis, [bool]$refresh = $false) {
-    # What §9 asks a candidate to carry: the true source type (kept, not flattened away), the
+    # What sec. 9 asks a candidate to carry: the true source type (kept, not flattened away), the
     # current running state, the usage history when there is one, and how it matched.
     $discovery = Get-AppDiscovery $refresh
     $processes = Get-RunningProcessMap
@@ -1629,7 +1685,7 @@ function Resolve-LaunchTarget([string]$target, [bool]$refresh = $false) {
     # An app is named in whatever way the user knows it: a path, an executable on PATH, a
     # Start-menu entry's display name, or an installed (Store/UWP) app.
     #
-    # The order is §9's: an explicit path or an exact name first, then name relevance, and
+    # The order is sec. 9's: an explicit path or an exact name first, then name relevance, and
     # only then whether it is running and what the shell remembers being used -- those two
     # break ties, they never make the decision on their own.
     if (Test-Path -LiteralPath $target) {
@@ -1680,7 +1736,7 @@ function Resolve-LaunchTarget([string]$target, [bool]$refresh = $false) {
     $best = $ranked[0]
     # A name tie the signals could not break is reported, not guessed. "'Chat' matching both
     # 'Chat' and 'Chat (work)'" is exactly the case where picking the usually-busy one is how
-    # the wrong application gets launched (§9: never assume the most used app is the intent).
+    # the wrong application gets launched (sec. 9: never assume the most used app is the intent).
     $tied = @($ranked | Where-Object {
         [int]$_['score'] -eq [int]$best['score'] -and
         [bool]$_['isRunning'] -eq [bool]$best['isRunning'] -and
@@ -1807,10 +1863,10 @@ function Do-Launch([object]$Arg) {
 
     $started = Get-Date
     $proc = $null
-    # 启动前把「会让 Electron 变成 Node」的变量从本进程环境里临时摘掉：worker 由 Agent 会话
-    # 派生，环境里带着 ELECTRON_RUN_AS_NODE=1，照抄给子进程就会让聊天客户端/编辑器这类
-    # Electron 应用静默退出（exit 0、无窗口）——表现成「启动成功了但什么都没出现」。
-    # 启动完立刻恢复，不影响 worker 自己的后续行为。
+    # Before launching, temporarily strip the "would turn Electron into Node" variables from this process's environment: the worker is spawned by the Agent session
+    # and carries ELECTRON_RUN_AS_NODE=1; copying it into the child makes Electron apps like chat clients and editors
+    # exit silently (exit 0, no window) -- which looks like "the launch succeeded but nothing appeared".
+    # Restored right after the launch, with no effect on the worker's own later behavior.
     $launchEnvSaved = @{}
     foreach ($envName in @('ELECTRON_RUN_AS_NODE', 'ELECTRON_NO_ASAR', 'ELECTRON_NO_ATTACH_CONSOLE',
                            'ELECTRON_FORCE_WINDOW_MENU_BAR', 'NODE_OPTIONS', 'NODE_REPL_EXTERNAL_MODULE')) {
@@ -1906,7 +1962,7 @@ function Do-Launch([object]$Arg) {
         matchedBy  = $how
         note       = $note
     }
-    # B4 (§9): which way the target was found, whether it was already running, what the shell
+    # B4 (sec. 9): which way the target was found, whether it was already running, what the shell
     # remembers about how often it has been used, and the candidates that lost. None of these
     # decides the launch -- they are what lets the caller see that the fuzzy match it got is
     # the one it meant.
@@ -2108,7 +2164,7 @@ function Get-ComUiTree([int64]$hwnd, [int]$maxDepth, [int]$maxNodes, [bool]$prob
         [DshUia.Engine]::Find($hwnd, $maxNodes, $probePatterns, $wantName, $wantType, $wantId, $wantFilter, [ref]$rows, [ref]$truncated)
         # A search that finds nothing and a client that cannot answer look the same from here,
         # so the client is asked again before the empty answer is believed -- if the read has
-        # budget left for another traversal (§7.4 第 5 条).
+        # budget left for another traversal (sec. 7.4 item 5).
         if ((@($rows)).Count -eq 0 -and (Test-WalkAllowed $ledger)) {
             Add-HealthProbe $ledger
             if (-not [DshUia.Engine]::ClientHealthy($hwnd)) {
@@ -2126,7 +2182,7 @@ function Get-ComUiTree([int64]$hwnd, [int]$maxDepth, [int]$maxNodes, [bool]$prob
             skipped   = 0
             mode      = 'find'
             reinit    = $reinit
-            # §7.4 第 3 条: which conditions the C# find handed to the provider. Computed from
+            # sec. 7.4 item 3: which conditions the C# find handed to the provider. Computed from
             # the same inputs and with the same helper the C# uses, so the report cannot drift
             # from what actually happened.
             pushdown  = @(
@@ -2134,7 +2190,7 @@ function Get-ComUiTree([int64]$hwnd, [int]$maxDepth, [int]$maxNodes, [bool]$prob
                 elseif ([DshUia.Engine]::IsExactControlType($wantType)) { 'controlType' }
             )
             # A search enumerates on the provider's side, so there is no client-side walk to
-            # count -- said out loud rather than reported as "visited nothing" (§7.4 第 2 条).
+            # count -- said out loud rather than reported as "visited nothing" (sec. 7.4 item 2).
             traversal = [ordered]@{
                 visited = 0; maxQueue = 0; visitBudget = 0; traversalTruncated = $false; elapsedMs = 0; providerSide = $true
                 walks = [int]$ledger.Walks; healthProbes = [int]$ledger.HealthProbes; resets = [int]$ledger.Resets; walkCap = [int]$ledger.Cap
@@ -2182,8 +2238,8 @@ function Get-ComUiTree([int64]$hwnd, [int]$maxDepth, [int]$maxNodes, [bool]$prob
         mode      = 'tree'
         reinit    = $reinit
         legacy    = $legacy
-        # §7.4 第 2 条: what the walk cost, separately from what it returned.
-        # §7.4 第 5 条: and how many traversals this one read took in total, so a retry chain
+        # sec. 7.4 item 2: what the walk cost, separately from what it returned.
+        # sec. 7.4 item 5: and how many traversals this one read took in total, so a retry chain
         # cannot become invisible work.
         traversal = [ordered]@{
             visited           = [int]$walked
@@ -2223,7 +2279,7 @@ function Test-LegacyBridgeRows($rows) {
 }
 
 function Get-VisitBudget([int]$maxNodes, $explicit) {
-    # How many nodes the traversal may *visit* (§7.4 第 2 条), which is a different question
+    # How many nodes the traversal may *visit* (sec. 7.4 item 2), which is a different question
     # from how many rows it may return.
     #
     # A caller that names `max_visited` gets exactly that, with 0 meaning "no limit". Without
@@ -2245,7 +2301,7 @@ function New-WalkLedger {
     # One read used to be able to traverse the same window several times over: the walk itself,
     # a re-walk after an in-process client re-creation, a second re-walk when the bridge rows
     # looked legacy, plus two client-health probes -- and then the *host* may restart the whole
-    # worker and repeat the read on top of that (§7.4 第 5 条: 控制重试总量). Each of those is
+    # worker and repeat the read on top of that (sec. 7.4 item 5: cap the total retries). Each of those is
     # a full traversal of a window that may be large, so they are counted in one place and
     # bounded, instead of being added one at a time by whoever needs another retry.
     return [pscustomobject]@{

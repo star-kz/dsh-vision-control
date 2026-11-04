@@ -19,8 +19,38 @@
  */
 
 import { spawn } from 'node:child_process';
+import { performance } from 'node:perf_hooks';
 
 export const ENGINES = Object.freeze(['auto', 'ddagrab', 'gdigrab']);
+
+/**
+ * 区域订阅（新-P1-01）的区域归一化。纯函数，可单测。
+ *
+ * 内部形态定死为 `source = { kind:'screen', region:{x,y,w,h} }`（屏幕绝对坐标系，
+ * 与 computer_screenshot 的 envelope.displays 同一套）。`{type:"region", base:"screen"}`
+ * 那种工具面形态由宿主侧翻译成本形态，see/ 里只有这一种。
+ *
+ * - 缺 region → null（整屏）。
+ * - x/y 允许负值：多显示器的虚拟桌面坐标系里副屏可以在原点左/上（gdigrab 支持负偏移；
+ *   ddagrab 的 crop 对负值会报错，由 ffmpeg 错误链兜底）。多屏参数化是新-P2-06 的事。
+ * - w/h 至少 2×2（再小没有观察意义，也能拦住把 x/y 误传成 w/h 的调用）。
+ * - 字段非法 → RangeError。越界（区域超出屏幕）不在此处拦：see/ 不知道屏幕多大，
+ *   由 ffmpeg 报错或宿主侧按 displays 预检（见 HOST-SPEC）。
+ */
+export function normalizeRegion(region) {
+  if (region == null) return null;
+  const x = Math.trunc(Number(region.x));
+  const y = Math.trunc(Number(region.y));
+  const w = Math.trunc(Number(region.w ?? region.width));
+  const h = Math.trunc(Number(region.h ?? region.height));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new RangeError(`region 原点非法：x=${region.x}, y=${region.y}`);
+  }
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w < 2 || h < 2) {
+    throw new RangeError(`region 尺寸非法：w=${region.w ?? region.width}, h=${region.h ?? region.height}（至少 2×2）`);
+  }
+  return { x, y, w, h };
+}
 
 /** 源描述 → 输入参数。纯函数，可单测。 */
 export function sourceArgs(source = { kind: 'screen' }, { engine = 'auto', fps = 12 } = {}) {
@@ -36,14 +66,17 @@ export function sourceArgs(source = { kind: 'screen' }, { engine = 'auto', fps =
       const useDda = s.engine === 'ddagrab' || (s.engine !== 'gdigrab' && engine !== 'gdigrab');
       if (!useDda) {
         // gdigrab 的 -framerate 是**设备侧**采样率，必须给，否则默认 29.97 白解码
-        const region = s.region
-          ? ['-offset_x', String(s.region.x), '-offset_y', String(s.region.y),
-            '-video_size', `${s.region.w}x${s.region.h}`]
+        // 区域偏移在**设备侧**完成（-offset_x/-offset_y/-video_size）：GDI 只拷区域那块，
+        // 16MB 全屏拷贝直接省掉，这是区域订阅在 gdigrab 上几乎零代价的原因。
+        const r = normalizeRegion(s.region);
+        const region = r
+          ? ['-offset_x', String(r.x), '-offset_y', String(r.y),
+            '-video_size', `${r.w}x${r.h}`]
           : [];
         return ['-f', 'gdigrab', '-framerate', String(fps), '-draw_mouse', '0', ...region,
           '-i', s.desktop ?? 'desktop'];
       }
-      // ddagrab 是 filter source，输入侧没有帧率参数
+      // ddagrab 是 filter source，输入侧没有帧率参数（区域裁剪在 captureArgs 的 -vf 里做）
       return ['-f', 'lavfi', '-i', `ddagrab=framerate=${fps}:draw_mouse=${s.mouse ? 1 : 0}`];
     }
     case 'file':
@@ -85,8 +118,12 @@ export function captureArgs({
   }
   args.push(...sourceArgs(source, { engine, fps }));
   args.push('-an', '-sn');
+  // 区域订阅（新-P1-01）：gdigrab 已在设备侧偏移+裁好（见 sourceArgs），这里只剩 scale；
+  // ddagrab 输入侧没有裁剪参数，在 -vf 里插 crop —— 位置必须在 hwdownload/format 之后
+  // （crop 吃内存帧，不能裁 GPU 帧）、scale 之前（先裁再缩，缩放只算区域那一份像素）。
+  const r = source?.kind === 'screen' ? normalizeRegion(source?.region) : null;
   args.push('-vf', isDda(source, engine)
-    ? `hwdownload,format=bgra,scale=${width}:${height}:flags=${sws}`
+    ? `hwdownload,format=bgra,${r ? `crop=${r.w}:${r.h}:${r.x}:${r.y},` : ''}scale=${width}:${height}:flags=${sws}`
     : `scale=${width}:${height}:flags=${sws}`);
   if (source?.kind !== 'screen') args.push('-r', String(fps));
   args.push('-f', 'rawvideo', '-pix_fmt', 'rgb24', '-');
@@ -105,23 +142,38 @@ export function captureArgs({
   const args = captureArgs({ source, width, height, fps, ffmpegPath, engine }).slice(1);
   const child = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   const need = width * height * 3;
-  let pending = null;
+  // 帧字节管道：chunk 先攒进数组，凑满一帧才**一次性** concat。
+  // 旧写法每来一个 ~64KB chunk 就把 pending 整体重拼一次（一帧 1MB 要拼 ~17 次，
+  // 实测 ~100MB/s 内存带宽放大）。帧**拷出成独立 buffer**，不留大拼接块上的
+  // subarray 视图（视图会把整块 pending 拖住不放）。
+  let chunks = [];
+  let have = 0;
   let n = 0;
   const t0 = Date.now();
+  const t0Mono = performance.now();
+  // 直播源帧时钟用单调墙钟（performance.now 差值，防 NTP 校时/休眠跳变）：
+  // 背压丢帧时帧序时间 i/fps 会失真，而全部节奏常数（maxWaitSec、silentFloorSec）
+  // 都是按真实秒设计的。文件源保留 i/fps —— 离线回归语义不变。
+  const live = source?.kind !== 'file';
   let err = '';
 
   const done = new Promise((resolve, reject) => {
     child.stdout.on('data', (chunk) => {
-      pending = pending?.length ? Buffer.concat([pending, chunk]) : chunk;
-      while (pending.length >= need) {
-        const buf = pending.subarray(0, need);
-        pending = pending.subarray(need);
+      chunks.push(chunk);
+      have += chunk.length;
+      while (have >= need) {
+        const exact = have === need;
+        const joined = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks, have);
+        // exact（含单 chunk 正好一帧）时 joined 本身就是独立新 buffer，零拷贝直出
+        const buf = exact ? joined : Buffer.from(joined.subarray(0, need));
+        const rest = exact ? null : joined.subarray(need);
+        chunks = rest ? [rest] : [];
+        have = rest ? rest.length : 0;
         const i = n;
         n += 1;
         if (i === 0) onFirst?.(Date.now() - t0);
-        onFrame?.({ i, t: i / fps, buf });
+        onFrame?.({ i, t: live ? (performance.now() - t0Mono) / 1000 : i / fps, buf });
       }
-      if (pending.length === 0) pending = null;
     });
     child.stderr.on('data', (d) => {
       err = `${err}${d}`.slice(-4000);

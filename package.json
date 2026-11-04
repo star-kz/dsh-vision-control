@@ -1,10 +1,13 @@
 {
   "name": "@k-launcher/dsh-vision-control",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "PolyForm-Noncommercial-1.0.0",
   "author": "star-kz",
   "repository": { "type": "git", "url": "https://github.com/star-kz/dsh-vision-control.git" },
   "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
   "description": "DSH-Vision-Control（dsh-视-驭）：实时视觉感知 + 精确桌面操控。computer_* 操控工具族 + computer_watch 实时屏幕感知，composer 工具栏芯片一键授权。",
   "exports": {
     ".": "./index.js",
@@ -68,7 +71,8 @@
     "browser",
     "internal",
     "see",
-    "skills"
+    "skills",
+    "tools"
   ],
   "engines": {
     "node": ">=20",

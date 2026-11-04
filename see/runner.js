@@ -17,7 +17,7 @@
  *    （时间顺序不能乱），新图挤掉旧图由 pipeline 的 queueDepth 负责。
  */
 
-import { spawnFrames, pickScreenEngine } from './capture.js';
+import { spawnFrames, pickScreenEngine, normalizeRegion } from './capture.js';
 import { createPipeline } from './pipeline.js';
 // vision-control 裁剪说明：原 see-now 的悬浮窗（window.js）、聊天轮询（chat.js）、
 // 插话回执（interject.js）、旁白 TTS（speech/voice）已按需求整体移除。
@@ -70,6 +70,26 @@ export const DEFAULT_PACE = 'normal';
 /** 参数签名：key 排序后拼串，`{a:1,b:2}` 与 `{b:2,a:1}` 视为同一个。 */
 function optsSig(o) {
   return Object.keys(o ?? {}).sort().map((k) => `${k}=${JSON.stringify(o[k])}`).join('|');
+}
+
+/**
+ * 采集源签名（新-P1-01）：两条 watch 的 src 指不指向同一个东西。
+ *
+ * 只拼"影响采集内容"的字段（kind/path/device/realtime/region），不拼 engine ——
+ * engine 是 start 解析出来的实现细节，auto→ddagrab 不该触发重开。
+ * 区域坐标经 normalizeRegion 归一后比较，`{x:100.0}` 与 `{x:100}` 是同一个区域。
+ *
+ * 为什么需要它：区域订阅的常态操作是"换个区域接着看"，而旧行为是 src 只在
+ * 冷启动生效、运行中传新 src 被静默忽略（模型以为换了区域，其实还在看旧的）。
+ */
+export function srcSig(s) {
+  if (!s || !s.kind) return 'null';
+  let r = '';
+  try {
+    const n = normalizeRegion(s.region);
+    if (n) r = `${n.x},${n.y},${n.w},${n.h}`;
+  } catch { r = 'invalid'; }
+  return [s.kind, s.path ?? '', s.device ?? '', s.realtime === true ? 1 : 0, r].join('|');
 }
 
 /**
@@ -176,15 +196,27 @@ export function createRunner({ ffmpegPath = 'ffmpeg', log = () => {}, graceSec =
     // 走到这里就是"明确要开始看"（watch 的自动重启已经在前面被硬闸挡住了）。
     hungUp = false;
     endedSource = null;
+    /**
+     * 区域订阅（新-P1-01）：region 在这里归一化+校验（非法直接拒收，不带着坏参数 spawn）。
+     * 归一化后的 {x,y,w,h} 同时进两处：采集命令（gdigrab 设备侧偏移 / ddagrab -vf crop，
+     * 见 capture.js）和管线 origin（帧注册带原点，见 pipeline.js flush）。
+     */
+    let region = null;
+    try { region = normalizeRegion(src?.region); } catch (e) {
+      lastError = `region: ${e?.message ?? e}`;
+      log(`拒收：${lastError}`);
+      return { started: false, error: lastError };
+    }
     let engine = src.engine ?? 'auto';
     if (src.kind === 'screen' && engine === 'auto') engine = await pickScreenEngine({ ffmpegPath });
     const size = SIZES[q] ?? SIZES[DEFAULT_QUALITY];
     // oneShot 由调用方（watch）决定：**只有换清晰度**时置 true（缓冲区刚扔，等攒满等于白等一个窗口）
-    const p = createPipeline({ ...opts, width: size[0], height: size[1] });
+    const p = createPipeline({ ...opts, width: size[0], height: size[1], origin: region });
     // 记下"这次建管线用的调用方参数"（不含 oneShot）——watch 靠它发现"模式变了"。
     runOpts = { ...opts };
     delete runOpts.oneShot;
     const s = { ...src, engine };
+    if (region) s.region = region;   // 归一化结果回写：source/status/签名全用同一套整数
     quality = q ?? DEFAULT_QUALITY;
     frames = 0;
     lastError = null;
@@ -218,14 +250,27 @@ export function createRunner({ ffmpegPath = 'ffmpeg', log = () => {}, graceSec =
       lastError = `ffmpeg: ${e?.message ?? e}`;
       if (pipeline === p) teardown('ffmpeg-error');
     });
-    log(`开始看 ${s.kind}${engine && engine !== 'auto' ? `/${engine}` : ''} @${size[0]}×${size[1]}`);
+    log(`开始看 ${s.kind}${engine && engine !== 'auto' ? `/${engine}` : ''}${region ? ` 区域(${region.x},${region.y} ${region.w}×${region.h})` : ''} @${size[0]}×${size[1]}`);
     return { started: true, source: s, engine, quality, params: p.constants };
   }
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  /**
+   * 预热屏幕引擎探测（授权/启动时调一次）。
+   *
+   * `pickScreenEngine` 原本惰性发生在**首个 watch 的首帧路径上**（start 里 await），
+   * 白付一次 ffmpeg 试跑（~400ms）的冷启动尖峰。预热把它摊到插件注册期；
+   * 结果由 capture.js 进程级缓存，之后每次 start 都是 0 成本。
+   * 探测自己兜底成 gdigrab、从不 reject，但调用方仍按 fire-and-forget 接 catch。
+   */
+  function preheat() {
+    return pickScreenEngine({ ffmpegPath });
+  }
+
   return {
     start,
+    preheat,
     stop() { teardown('手动'); return { stopped: true }; },
     /**
      * 用户关掉了悬浮窗 = 明确表示"不看了"。
@@ -284,6 +329,12 @@ export function createRunner({ ffmpegPath = 'ffmpeg', log = () => {}, graceSec =
         // 管线参数变了（常规 ↔ 逐帧）：这两套口径建管线时就定死了，只能重开。
         const modeChanged = Boolean(pipeline) && optsSig(runOpts) !== optsSig(opts);
         /**
+         * 新-P1-01：显式传了**不同的**源（含换区域）也重开。旧行为里 src 只在冷启动生效，
+         * 运行中传新 src 被静默忽略 —— 模型以为换了区域，其实还在看旧的。
+         * 签名相同不重开：区域订阅的稳态就是每条 watch 都带着同一个 region。
+         */
+        const srcChanged = Boolean(pipeline) && explicitSrc && srcSig(src) !== srcSig(source);
+        /**
          * **要不要重开采集**：`pipeline` 不为空**不等于**采集还在跑。
          *
          * `teardown()` 故意留着 `pipeline`（好把队列里剩下的图发完），于是宽限期到点、
@@ -294,19 +345,30 @@ export function createRunner({ ffmpegPath = 'ffmpeg', log = () => {}, graceSec =
         const stopped = Boolean(pipeline) && !running;
         // **冷启动**（手上没有管线，或采集已经停了）才 eager。换清晰度不算 —— 那条路已经用 oneShot 了。
         const cold = !pipeline || stopped;
-        if (!pipeline || stopped || switching || modeChanged) {
+        if (!pipeline || stopped || switching || modeChanged || srcChanged) {
           if (pipeline) {
             teardown(stopped ? '采集已停，重开'
-              : switching ? `换清晰度 ${quality} → ${q}` : '换模式（逐帧 / 常规）');
+              : switching ? `换清晰度 ${quality} → ${q}`
+              : srcChanged ? `换采集源（${srcSig(src)}）`
+              : '换模式（逐帧 / 常规）');
           }
           if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
-          await start({
+          const st = await start({
             src: src ?? prevSrc ?? { kind: 'screen' },
             // 只有**换清晰度**才 oneShot：那一下缓冲区刚被扔掉，等攒满一张就等于白等一整个窗口。
             // 普通的第一次 watch 不 oneShot —— 模型要的是"这 20 秒"，不是"此刻"。
             opts: { ...opts, oneShot: switching },
             quality: q,
           });
+          /**
+           * start 拒收（典型：region 非法被 normalizeRegion 拦下）必须透传成回执 error。
+           * 不看返回值继续走的话：热态下旧采集已被 teardown 拆掉，等待循环立刻 break，
+           * flushNow 拿旧管线出一张**旧区域**的图还回 ok:true —— 模型以为换区域成功了。
+           * （review-see P1-1：HOST-SPEC-1 第 2 条口径 = 非法 region 在回执 error 带原因。）
+           */
+          if (st && st.started === false) {
+            return { ok: false, reason: 'start-failed', waited: (Date.now() - t0) / 1000, error: st.error ?? lastError };
+          }
         } else if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
 
         const deadline = t0 + Math.max(2, seconds) * 1000;
@@ -379,6 +441,9 @@ export function createRunner({ ffmpegPath = 'ffmpeg', log = () => {}, graceSec =
 
     /** 常驻循环每拍续命（见 touch 的注释） */
     touch,
+
+    /** 出图队列溢出丢掉的图数（queueDepth=1：取图比出图慢时顶掉最旧的）——回执要把它带给模型 */
+    dropped() { return pipeline?.dropped ?? 0; },
 
     /** 落一条说明，等下一次工具结果带走（挂断那一条走这里） */
     note(text) {

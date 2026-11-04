@@ -316,7 +316,7 @@ export const UIA_TEXT_SCHEMA = {
       additionalProperties: false,
       properties: {
         status: { type: 'string', required: true },
-        summary: { type: 'string', description: 'One line: control type · name · value when the control holds a value.' },
+        summary: { type: 'string', description: 'One line: control type - name - value when the control holds a value.' },
         ref: { type: 'string' },
         truncated: { type: 'boolean' },
         note: { type: 'string' },
@@ -350,6 +350,80 @@ export const UIA_TEXT_SCHEMA = {
   },
 };
 
+/**
+ * The OCR block of one read (新-P1-03 / ocr O.2).
+ *
+ * OCR is the fallback for surfaces the accessibility tree cannot speak for. Its lines
+ * are permanently UNVERIFIED — the schema says so twice (`status`, and `verified: false`
+ * on every line and word) because OCR mistakes pixels for letters without telling you,
+ * and a reply that did not say so would launder a guess into a fact. `reason` is present
+ * only when the read failed, prefixed `ocr engine unavailable:` or `ocr read failed:`.
+ */
+export const UIA_OCR_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  description: 'The OCR reading of the window pixels (windows.media.ocr). Every line is unverified — confirm against a capture before acting on one.',
+  properties: {
+    status: { type: 'string', required: true, enum: ['unverified'] },
+    verified: { type: 'boolean', required: true, enum: [false], description: 'Always false: OCR output is never verified.' },
+    note: { type: 'string', required: true },
+    engine: { type: 'string', description: "'windows.media.ocr'." },
+    language: { type: 'string', description: 'The recognizer language actually used.' },
+    region: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        x: { type: 'integer', required: true },
+        y: { type: 'integer', required: true },
+        width: { type: 'integer', required: true },
+        height: { type: 'integer', required: true },
+      },
+    },
+    downscaled: { type: 'boolean', description: 'True when the bitmap was downscaled before recognition (coordinates are mapped back).' },
+    textFound: { type: 'boolean', required: true },
+    lineCount: { type: 'integer', required: true },
+    truncated: { type: 'boolean', description: 'True when max_lines cut the list.' },
+    reason: { type: 'string', description: "Only on failure, prefixed 'ocr engine unavailable:' or 'ocr read failed:'." },
+    elapsedMs: { type: 'integer' },
+    lines: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          text: { type: 'string', required: true },
+          verified: { type: 'boolean', required: true, enum: [false] },
+          rect: {
+            type: 'object',
+            additionalProperties: false,
+            required: true,
+            properties: {
+              x: { type: 'integer', required: true },
+              y: { type: 'integer', required: true },
+              width: { type: 'integer', required: true },
+              height: { type: 'integer', required: true },
+            },
+          },
+          point: { type: 'json', description: '{x, y, level} — a clickable centre — or null when points were off or no centre could be derived.' },
+          wordCount: { type: 'integer' },
+          words: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                text: { type: 'string', required: true },
+                verified: { type: 'boolean', required: true, enum: [false] },
+                rect: { type: 'object', additionalProperties: true, required: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
 export const UIA_STATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -362,12 +436,12 @@ export const UIA_STATE_SCHEMA = {
     digest: { type: 'string', required: true },
     walked: { type: 'integer', required: true },
     skipped: { type: 'integer', required: true },
-    cachePatterns: { type: 'integer', description: 'How many pattern properties the traversal asked the provider to cache. 0 when the read passed `patterns: false`, which is what makes that flag cheaper rather than merely shorter (§7.4). The COM engine reports it as well as the managed wrapper.' },
-    pushdown: { type: 'array', items: { type: 'string' }, description: "Which of the caller's conditions were handed to the UI Automation provider itself instead of being filtered node by node afterwards (`automationId`, `controlType`). Only conditions that mean the same thing when pushed down are listed, so a search that names a control type in full is a smaller enumeration, while a partial one keeps the substring matching the caller asked for." },
+    cachePatterns: { type: 'integer', description: 'How many pattern properties the traversal asked the provider to cache; 0 when the read passed `patterns: false`.' },
+    pushdown: { type: 'array', items: { type: 'string' }, description: "Which of the caller's conditions the UI Automation provider itself filtered (`automationId`, `controlType`) instead of the client filtering node by node." },
     traversal: {
       type: 'object',
       additionalProperties: false,
-      description: 'What the read cost, told apart from what it returned (§7.4 第 2 条): the output budget (`max_nodes`) and the traversal budget are different questions, and a tree of anonymous containers used to be walked with no bound of its own.',
+      description: 'What the read cost, told apart from what it returned: the output budget (`max_nodes`) and the traversal budget are different questions.',
       properties: {
         visited: { type: 'integer', required: true, description: 'Nodes the traversal actually looked at. This can be far larger than the number of rows returned when `skip_empty` drops them.' },
         maxQueue: { type: 'integer', required: true, description: 'The largest number of nodes waiting to be visited at any point.' },
@@ -375,9 +449,9 @@ export const UIA_STATE_SCHEMA = {
         traversalTruncated: { type: 'boolean', required: true, description: 'True when the traversal budget — not the node budget — stopped the walk, so what came back is partial. Raise `max_visited`, read a narrower window, or search instead.' },
         elapsedMs: { type: 'integer', required: true, description: 'Milliseconds spent walking (or enumerating, for a search).' },
         providerSide: { type: 'boolean', description: 'True for a search, which enumerates inside the provider, so the client-side walk counts are zero by nature rather than because nothing was traversed.' },
-        walks: { type: 'integer', description: 'How many traversals of the window this one read took, including re-walks after the client was re-created on purpose. A read that needed more than one is retry cost the caller is paying for, and it is bounded (§7.4).' },
+        walks: { type: 'integer', description: 'How many traversals of the window this one read took, including re-walks after client re-creation.' },
         walkCap: { type: 'integer', description: 'The cap on those traversals for a single read.' },
-        healthProbes: { type: 'integer', description: 'How many times the client was asked whether it is healthy. Each probe is a cross-process question, not a free check.' },
+        healthProbes: { type: 'integer', description: 'How many times the client was asked whether it is healthy.' },
         resets: { type: 'integer', description: 'How many times the UI Automation client was re-created during this read.' },
       },
     },
@@ -413,6 +487,9 @@ export const UIA_STATE_SCHEMA = {
     },
     shot: SCREENSHOT_VALUE_SCHEMA,
     text: UIA_TEXT_SCHEMA,
+    // 新-P1-03 / ocr O.2: the OCR block rides the same state object, so computer_ui and
+    // the batch's trailing read both carry it.
+    ocr: UIA_OCR_SCHEMA,
     frames: {
       type: 'array',
       description: 'With captures: related, one frame per window that belongs to the read window (a dialog, a popup menu, a tool window), each with its own `frame` id to click through, its relation and its real z-rank. The image of each frame is attached to this reply.',
@@ -604,7 +681,7 @@ export const BATCH_STEP_SCHEMA = {    type: 'object',
       enum: STEP_ACTION_LIST,
       description: "The step to perform (see enum). Groups: pointer click/move/drag/scroll; text type/key/paste; UI Automation invoke/set_value/get_value/get_text/select_text/scroll_into_view/toggle/select/expand/collapse/close/minimize/maximize/restore/legacy_action; plus locate_text/click_text/get_caret, clipboard, focus, wait, wait_for, screenshot. **Every other field of a step means the same as in the matching single-step tool**, whose full schema is in this session's tool list — it is not repeated here.",
     },
-    condition: { type: 'json', description: "For 'wait_for': the condition to wait for — the same object the batch-level `wait_for.condition` documents, which is where its full schema lives. Kept free-form here so the condition reference is not serialized twice into every request. The step ends the moment the condition holds." },
+    condition: { type: 'json', description: "For 'wait_for': the condition to wait for — the same object the batch-level `wait_for.condition` documents, which is where its full schema lives. Kept free-form here so the condition reference is not serialized twice into every request. The step ends the moment the condition holds. Step-level semantics (优-P0-10): unlike the batch-level `wait_for`, which runs once after all the steps, a wait_for *step* holds the batch at its own position — the worker polls the condition (the first check is immediate, then every `poll_ms`) and the batch moves on to the next step the moment it holds. If it never holds within `timeout_ms`, the batch stops at this step unless the step says on_timeout: 'continue'; either way the reply names where it stopped (`nextStep`) and what the checks saw (`waits`). A condition that could not be observed at all is 'unknown', not false — the batch's `outcome` tells the two apart ('condition-timeout' vs 'condition-unobservable')." },
     timeout_ms: { type: 'integer', description: "For 'wait_for': how long to keep checking before giving up (default 30000, maximum 120000). A wait that times out is reported, not thrown: \"it never became true inside the budget\" is an answer, and the step log says how long it looked and what it saw." },
     on_timeout: {
       type: 'string',
@@ -641,7 +718,7 @@ export const BATCH_STEP_SCHEMA = {    type: 'object',
     keys: { type: 'string', description: "key: a chord such as 'enter' or 'ctrl+shift+t'." },
     repeat: { type: 'integer', description: 'key: how many times to press the chord.' },
     hold_seconds: { type: 'number', description: 'key: hold the chord down for this long instead of tapping it.' },
-    delay_ms: { type: 'integer', description: 'type: delay between characters, for apps that drop fast input.' },
+    delay_ms: { type: 'integer', description: "type: per-key delay in milliseconds, for apps that drop fast input. Each character is sent as its own keystroke with this pause between keys (the first key goes immediately), and a cancel lands between keys rather than at the end. 0 or absent sends the whole text batched, as fast as SendInput takes it." },
     restore: { type: 'boolean', description: "paste: put the user's own clipboard back afterwards (default true)." },
     require_restore: { type: 'boolean', description: 'paste: refuse before writing when the clipboard cannot be saved and put back (see computer_paste).' },
     verify: { type: 'object', additionalProperties: true, description: 'paste: a control to read back after the paste (ref or selector, as in computer_paste).' },
@@ -773,13 +850,45 @@ export const BATCH_VALUE_SCHEMA = {
     },
     outcome: {
       type: 'string',
-      description: "What the call as a whole concluded: 'ok', 'step-failed', 'condition-timeout' (a wait_for did not hold and the steps after it were not run), 'condition-unobservable', 'reobserve-required' (the window changed and the rest was not run), 'deadline-partial' (this call's deadline cut a wait short), 'deadline' (the deadline was spent before a step could start — see `outOfBudget`) or 'cancelled'.",
+      description: "What the call as a whole concluded: 'ok', 'step-failed', 'condition-timeout' (a wait_for did not hold and the steps after it were not run), 'condition-unobservable', 'reobserve-required' (the window changed and the rest was not run), 'deadline-partial' (this call's deadline cut a wait short), 'deadline' (the deadline was spent before a step could start — see `outOfBudget`) or 'cancelled'. A rehearsal (dry_run) reports its own three instead: 'dry-run' (a real run would finish), 'dry-run-deadline' (the budget would be spent before a step could start) or 'dry-run-reobserve' (the window in front is not the one the batch would be in).",
     },
     actionSent: {
       type: 'boolean',
-      description: 'Whether any step in this call actually put input into the desktop. That is what tells a caller whether a failure could have changed anything — a different question from whether the call succeeded.',
+      description: 'Whether any step in this call actually put input into the desktop. That is what tells a caller whether a failure could have changed anything — a different question from whether the call succeeded. Always false on a dry run.',
     },
     wroteSteps: { type: 'array', items: { type: 'integer' }, description: 'The indexes of the steps that sent input, in order.' },
+    // 新-P1-02 B2 / workerfeat A.2: the rehearsal receipt fields. `dryRun` is the
+    // unmixable marker — a receipt that carries it never ran, and one that ran never
+    // carries it — so the renderer branches on it before any "performed" wording.
+    dryRun: { type: 'boolean', description: 'True marks a rehearsal receipt (the call was made with dry_run): every check ran for real and nothing was dispatched to the desktop.' },
+    allOk: { type: 'boolean', description: 'Dry run: whether every step passed its rehearsal.' },
+    wouldStopAt: { type: 'integer', description: 'Dry run: the first step a real run would refuse; -1 when a real run would finish.' },
+    steps: {
+      type: 'array',
+      description: 'Dry run: one rehearsal report per step, in step order. Verdicts describe the desktop at rehearsal time; steps after a refusal were rehearsed assuming the earlier steps do what they say.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          step: { type: 'integer', required: true },
+          action: { type: 'string', required: true },
+          verdict: { type: 'string', required: true, description: "'ok' (a real run would dispatch this step) or 'refused' (a real run would stop here)." },
+          dispatched: { type: 'boolean', required: true, description: 'Always false in a rehearsal: no dry-run step ever sends input.' },
+          detail: { type: 'string', required: true, description: "What the step's preflight saw, in the worker's words." },
+          point: { type: 'object', additionalProperties: false, properties: { x: { type: 'integer', required: true }, y: { type: 'integer', required: true } }, description: 'The resolved point, for steps that name one.' },
+          via: { type: 'string', description: 'How a real click would be delivered (accessibility press or synthesized input).' },
+          frame: { type: 'string', description: 'The frame this step cited, when it did.' },
+          warning: { type: 'string', description: 'A fact worth saying that does not stop the step — e.g. a point outside the virtual desktop that a real click would clamp to the nearest edge.' },
+          elapsedMs: { type: 'integer', description: 'What rehearsing this step cost.' },
+          budgetLeftMs: { type: 'integer', description: "How much of the call's deadline a real run would still have on reaching this step." },
+        },
+      },
+    },
+    lines: { type: 'array', items: { type: 'string' }, description: 'Dry run: the per-step verdicts as one display line each.' },
+    note: { type: 'string', description: "Dry run: the rehearsal's own statement of what its verdicts mean." },
+    deadlineLeftMs: { type: 'integer', description: 'Dry run: how much of the deadline was still left when the rehearsal ended.' },
+    waitForNote: { type: 'string', description: 'Dry run: why the batch-level wait_for has no verdict — it describes the desktop after the steps, which a rehearsal never produces.' },
+    trailing: { type: 'object', additionalProperties: true, description: "Dry run: the trailing observations that were requested but not taken ('not taken (dry run)' / 'not read (dry run)')." },
     nextStep: { type: 'integer', description: 'Where the sequence can be picked up again after a stop (an undeclared window change, or a condition that did not hold). Absent when there is nothing to continue.' },
     transitions: {
       type: 'array',
@@ -1071,6 +1180,72 @@ export function digestOfText(text) {
 }
 
 /**
+ * Fold the OCR block into the observation digest (新-P1-03 / ocr O.2).
+ *
+ * Same rule as digestOfText: the pixels are part of what this read observed, so a read
+ * whose tree did not move but whose *recognized text* did must not answer `unchanged`.
+ * @param ocr - the mapped OCR block.
+ * @returns 8 hex characters.
+ */
+export function digestOfOcr(ocr) {
+  const hash = createHash('sha256');
+  hash.update([
+    ocr.textFound === true ? 'found' : 'none',
+    ocr.language ?? '',
+    ...(ocr.lines ?? []).map((line) => line?.text ?? ''),
+  ].join('|'));
+  return hash.digest('hex').slice(0, 8);
+}
+
+/**
+ * Map the backend's OCR block onto the declared shape (新-P1-03 / ocr O.2).
+ * @param raw - the backend's `ocr` object.
+ * @returns the value `UIA_OCR_SCHEMA` describes.
+ */
+export function ocrObservationValue(raw) {
+  const rectOf = (r) => ({
+    x: Number(r?.x ?? 0),
+    y: Number(r?.y ?? 0),
+    width: Number(r?.width ?? 0),
+    height: Number(r?.height ?? 0),
+  });
+  const value = {
+    status: 'unverified',
+    verified: false,
+    note: String(raw?.note ?? ''),
+    engine: String(raw?.engine ?? 'windows.media.ocr'),
+    language: String(raw?.language ?? ''),
+    textFound: raw?.textFound === true,
+    lineCount: Number(raw?.lineCount ?? 0),
+    truncated: raw?.truncated === true,
+  };
+  if (raw?.region !== undefined && raw?.region !== null) value.region = rectOf(raw.region);
+  if (raw?.downscaled === true) value.downscaled = true;
+  // `reason` only on failure — the worker prefixes it 'ocr engine unavailable:' or
+  // 'ocr read failed:', and a success carries no reason at all.
+  if (typeof raw?.reason === 'string' && raw.reason !== '') value.reason = raw.reason;
+  if (Number.isFinite(Number(raw?.elapsedMs))) value.elapsedMs = Number(raw.elapsedMs);
+  value.lines = (Array.isArray(raw?.lines) ? raw.lines : []).map((line) => {
+    const mapped = {
+      text: String(line?.text ?? ''),
+      verified: false,
+      rect: rectOf(line?.rect),
+      point: line?.point === undefined || line?.point === null
+        ? null
+        : { x: Number(line.point.x ?? 0), y: Number(line.point.y ?? 0), level: String(line.point.level ?? '') },
+      wordCount: Number(line?.wordCount ?? 0),
+      words: (Array.isArray(line?.words) ? line.words : []).map((w) => ({
+        text: String(w?.text ?? ''),
+        verified: false,
+        rect: rectOf(w?.rect),
+      })),
+    };
+    return mapped;
+  });
+  return value;
+}
+
+/**
  * Map the backend's tree reply onto the declared observation shape.
  * @param result - the backend reply.
  * @param search - whether this was a search rather than a full read.
@@ -1144,8 +1319,13 @@ export function stateValue(result, search, cachedShot) {
   // is a claim about (see digestOfText): a selection that moved in a tree that did not is
   // a change, and reporting it as "unchanged" would talk the caller out of looking.
   if (result.text !== undefined && result.text !== null) value.text = textObservationValue(result.text);
+  // 新-P1-03 / ocr O.2: the OCR block is part of what this read observed too — one hook
+  // here covers both computer_ui and the batch's trailing state, and the digest fold
+  // below keeps "unchanged" honest about the pixels.
+  if (result.ocr !== undefined && result.ocr !== null) value.ocr = ocrObservationValue(result.ocr);
   value.digest = digestOfNodes(value.nodes);
   if (value.text !== undefined) value.digest = `${value.digest}-${digestOfText(value.text)}`;
+  if (value.ocr !== undefined) value.digest = `${value.digest}-${digestOfOcr(value.ocr)}`;
   if (Number.isFinite(result.settledMs) && Number(result.settledMs) > 0) value.settledMs = Number(result.settledMs);
   // Reported, not swallowed: a tree that came through the legacy accessibility bridge has
   // generic control types and numeric ids, and a caller that does not know that will read it as
@@ -1211,17 +1391,49 @@ export function renderTextObservation(text) {
   return lines.join('\n');
 }
 
+/**
+ * Render the OCR block (新-P1-03 / ocr O.3).
+ *
+ * The word UNVERIFIED is part of every rendering — success, empty and failure alike —
+ * because OCR mistakes pixels for letters without telling you, and a render that dropped
+ * the marker would launder a guess into a fact. A failure says its status and does not
+ * pretend to be an empty reading; a line's point appears only when one was derived;
+ * words are never rendered (the line text already carries them).
+ * @param ocr - the mapped OCR block.
+ * @returns the display text.
+ */
+export function renderOcrObservation(ocr) {
+  const lines = [];
+  if (typeof ocr.reason === 'string' && ocr.reason !== '') {
+    lines.push(`ocr (UNVERIFIED): not read — ${ocr.reason}`);
+    return lines.join('\n');
+  }
+  if (ocr.textFound !== true) {
+    lines.push('ocr (UNVERIFIED): no text found in the pixels read.');
+    return lines.join('\n');
+  }
+  lines.push(`ocr (UNVERIFIED — confirm against a screenshot before acting on any line): ${ocr.lineCount ?? (ocr.lines ?? []).length} line(s)${ocr.truncated === true ? ', cut at the line budget' : ''} [${ocr.engine ?? 'windows.media.ocr'}${ocr.language ? ` ${ocr.language}` : ''}]`);
+  for (const line of ocr.lines ?? []) {
+    const point = line.point === null || line.point === undefined ? '' : ` -> click (${line.point.x},${line.point.y}) [${line.point.level}]`;
+    lines.push(`  ${JSON.stringify(line.text)}${point}`);
+  }
+  return lines.join('\n');
+}
+
 export function renderState(value, compact = true) {
   const textTail = value.text === undefined ? '' : `\n${renderTextObservation(value.text)}`;
+  // 新-P1-03 / ocr O.3: the OCR tail follows the text tail on every render path, and the
+  // batch's trailing state inherits it through this same function.
+  const ocrTail = value.ocr === undefined ? '' : `\n${renderOcrObservation(value.ocr)}`;
   const where = value.window.hwnd === 0
     ? 'no window resolved'
     : `hwnd=${value.window.hwnd} "${value.window.title}" [${value.window.process}] pid=${value.window.pid}`;
   if (value.nodes.length === 0) {
     if (value.delta?.known === true) {
-      return `delta against ${value.delta.base}: nothing changed (${value.delta.same} node(s) identical).\nwindow: ${where}${textTail}`;
+      return `delta against ${value.delta.base}: nothing changed (${value.delta.same} node(s) identical).\nwindow: ${where}${textTail}${ocrTail}`;
     }
     const why = value.searched ? 'No UI Automation node matched the search.' : 'No UI Automation nodes matched.';
-    return `${why}\nwindow: ${where}${textTail}`;
+    return `${why}\nwindow: ${where}${textTail}${ocrTail}`;
   }
   // A window that is present but exposes no children at all is a distinct state
   // worth naming: it is what a freshly opened app looks like for the second or two
@@ -1229,7 +1441,7 @@ export function renderState(value, compact = true) {
   // accessibility support looks like forever. Saying so beats handing back a
   // one-row tree that reads like a successful observation.
   if (!value.searched && value.nodes.length <= 1 && value.walked <= 1) {
-    return `window: ${where}\nthe window exposed no child controls. Either it is still initialising — retry in a moment — or it is a short-lived placeholder: some apps show one window while starting and then replace it, so list windows again (computer_windows) and use the newer handle. If neither applies, the app does not implement UI Automation at all and computer_screenshot with pixel clicks is the way in.${textTail}`;
+    return `window: ${where}\nthe window exposed no child controls. Either it is still initialising — retry in a moment — or it is a short-lived placeholder: some apps show one window while starting and then replace it, so list windows again (computer_windows) and use the newer handle. If neither applies, the app does not implement UI Automation at all and computer_screenshot with pixel clicks is the way in.${textTail}${ocrTail}`;
   }
   const lines = value.nodes.map((n) => {
     const type = n.controlType.replace('ControlType.', '');
@@ -1262,5 +1474,5 @@ export function renderState(value, compact = true) {
     value.nodes.some((n) => n.ref) ? '(the [s#.#] marker is that node\'s ref: pass it as `ref` to computer_ui_action to pin this exact element, and the action will tell you if the element has moved since this read)' : '',
     compact ? '(compact view: rows carry the ref, type, name and patterns. Pass compact: false for every row\'s geometry and the read\'s diagnostics.)' : '',
   ].filter((line) => line !== '');
-  return `${head}\n${lines.join('\n')}\n${notes.join('\n')}${textTail}`;
+  return `${head}\n${lines.join('\n')}\n${notes.join('\n')}${textTail}${ocrTail}`;
 }
