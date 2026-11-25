@@ -68,6 +68,8 @@ import {
   OBSERVED_DIGEST_LIMIT,
 } from './internal/tool-contracts.mjs';
 import { createSchemaVisibility } from './internal/schema-visibility.mjs';
+import { createModeAccess } from './internal/mode-access.mjs';
+import { registerModePrompt } from './internal/mode-prompt.mjs';
 import { collectDoctorReport } from './internal/doctor.mjs';
 import { applyDegraded } from './internal/degraded.mjs';
 import { registerBrowserState } from './tools/browser-state.mjs';
@@ -127,6 +129,16 @@ try {
 }
 const defineTool = hostTools?.defineTool;
 
+// RT is an optional capability bundle. Keep its import failure out of the legacy
+// computer_* registration path; a missing RT file must not remove UIA/OCR/wait/batch.
+let registerRealtimeTools = null;
+let realtimeModuleError = null;
+try {
+  ({ registerRealtimeTools } = await import('./tools/realtime.mjs'));
+} catch (error) {
+  realtimeModuleError = error;
+}
+
 /** Stable Loader identity. */
 export const name = 'computer-use';
 
@@ -141,8 +153,11 @@ export const name = 'computer-use';
  *
  * 降级挂载时 `tools` 不可用（正是它导入失败的），所以这里必须为空：否则 row 会停在
  * PENDING 等一个永远不会出现的服务，连那条只读路由都挂不上。
+ *
+ * `systemPrompt` 同样是硬依赖：registerModePrompt 在 apply 阶段读取它；只靠 fake
+ * context 的单元测试无法代替真实 Cordis 对 inject 声明的强制检查。
  */
-export const inject = bootstrapError === null ? ['tools'] : [];
+export const inject = bootstrapError === null ? ['tools', 'systemPrompt'] : [];
 
 /**
  * Plugin version echoed by the status route.
@@ -360,6 +375,9 @@ export function apply(ctx, config = {}) {
     return;
   }
 
+  // Assigned during tool registration; lifecycle closures below retain the same host.
+  let realtimeHost = null;
+
   /**
    * §A: one owner per host.
    *
@@ -462,6 +480,7 @@ export function apply(ctx, config = {}) {
   const sessions = createSessions({ defaultEnabled });
   // `sessionKey` 是模块级导出（归一化不属于某个实例），授权查询才在实例上。
   const { isEnabled } = sessions;
+  const getMode = (sessionId) => sessions.getMode?.(sessionId) ?? (isEnabled(sessionId) ? 'control' : 'disabled');
 
   let backend = null;
   /** When the worker was last replaced because it was serving the legacy accessibility bridge. */
@@ -475,6 +494,7 @@ export function apply(ctx, config = {}) {
   const visibility = createSchemaVisibility({
     enabled: config.hideToolSchemasWhenOff !== false,
     isEnabled,
+    getMode,
     logger: ctx.logger,
     onSessionDisposed: (sessionId) => {
       disposeBrowserSessionsFor(sessionId);
@@ -485,6 +505,24 @@ export function apply(ctx, config = {}) {
       void releaseSessionCaptures(sessionId);
     },
   });
+  // Explicit mode changes stop workers and mutate schema visibility asynchronously.
+  // Serialize them per session so a late disable cannot dispose a newly enabled runtime.
+  const modeTransitions = new Map();
+  function runModeTransition(sessionId, task) {
+    const key = sessionKey(sessionId);
+    const previous = modeTransitions.get(key) ?? Promise.resolve();
+    let release;
+    const transition = new Promise((resolve) => { release = resolve; });
+    modeTransitions.set(key, transition);
+    return (async () => {
+      await previous.catch(() => {});
+      try { return await task(); }
+      finally {
+        release();
+        if (modeTransitions.get(key) === transition) modeTransitions.delete(key);
+      }
+    })();
+  }
   if (visibility.enabled && typeof ctx.on !== 'function') {
     // 没有事件面的组合观察不到 agent；这时工具保持"可见但被拒"，而不是悄悄丢掉能力。
     ctx.logger?.warn?.('computer-use: ctx.on is unavailable; tool schemas stay advertised for every session');
@@ -555,6 +593,25 @@ export function apply(ctx, config = {}) {
   }
   /** 引用注册表（哪个会话被展示过哪次观察/哪一帧）：见 internal/refs.mjs。 */
   const refs = createRefRegistry({ sessionKey, generationOf: () => backend?.info?.generation });
+  // The continuous-watch runner predates the RT Worker and is intentionally separate.
+  // Tests may inject its narrow host facade; production receives it from applySeeNow().
+  let watchRuntime = config.watchRuntime ?? null;
+
+  function watchSnapshot(sessionId) {
+    const empty = { alive: false, seconds: 0, source: '' };
+    if (getMode(sessionId) === 'disabled') return empty;
+    try {
+      const status = watchRuntime?.status?.(sessionId) ?? {};
+      const source = typeof status.source === 'string' ? status.source : String(status.source?.kind ?? '');
+      return {
+        alive: status.running === true,
+        seconds: Number.isFinite(status.since) ? Math.max(0, Number(status.since)) : 0,
+        source,
+      };
+    } catch {
+      return empty;
+    }
+  }
 
   /**
    * What the desktop control is doing for one session.
@@ -568,19 +625,25 @@ export function apply(ctx, config = {}) {
    */
   function controlState(sessionId) {
     const key = sessionKey(sessionId);
-    const enabled = SUPPORTED && isEnabled(sessionId);
+    const mode = SUPPORTED ? getMode(sessionId) : 'disabled';
+    const enabled = mode !== 'disabled';
     const busy = execution.count(sessionId) > 0;
+    const watch = watchSnapshot(sessionId);
     const leaseState = leaseReport(key);
     let state = 'off';
     if (execution.isStopping(key)) state = 'stopping';
     else if (!enabled) state = sessions.hasExplicit(key) ? 'stopped' : 'off';
     else if (busy) state = 'busy';
-    else if (leaseState.owns && leaseState.idleMs !== null && leaseState.idleMs < CONTROLLER_IDLE_MS) state = 'ready';
+    else if (watch.alive) state = 'watching';
+    else if (mode === 'control' && leaseState.owns && leaseState.idleMs !== null && leaseState.idleMs < CONTROLLER_IDLE_MS) state = 'ready';
     else state = 'observing';
     return {
       state,
+      mode,
       enabled,
+      controlEnabled: mode === 'control',
       inFlight: execution.count(sessionId),
+      watch,
       // Whether this session currently pays for the computer_* schemas. The chip
       // shows it, and the paired test reads it instead of guessing.
       toolSchemas: visibility.toolSchemaState(key),
@@ -779,22 +842,24 @@ export function apply(ctx, config = {}) {
    * model passed.
    * @param exec - the tool execution carrying the calling agent.
    */
-  function requireGrant(exec) {
-    if (!SUPPORTED) {
-      throw new Error(`[UNSUPPORTED_PLATFORM] ${UNSUPPORTED_REASON}`);
-    }
-    if (isSubagent(exec)) {
-      throw new Error(`[SUBAGENT_COMPUTER_USE_UNAVAILABLE] ${SUBAGENT_REFUSAL}`);
-    }
-    const sessionId = exec?.agent?.session?.id;
-    if (!isEnabled(sessionId)) {
-      // Converge here as well: a session whose agent was created before this
-      // plugin's listener (or whose grant changed elsewhere) still stops paying
-      // for schemas it may not use.
-      visibility.sync(exec?.agent);
-      throw new Error(`[NOT_AUTHORIZED] 电脑操作尚未在本会话开启。${GRANT_HINT}`);
-    }
-  }
+  const modeAccess = createModeAccess({
+    getMode,
+    isSubagent,
+    supported: SUPPORTED,
+    unsupportedReason: UNSUPPORTED_REASON,
+    onDenied: (exec) => visibility.sync(exec?.agent),
+  });
+  function requireGrant(exec) { modeAccess.requireControl(exec); }
+  function requireObservation(exec) { modeAccess.requireObservation(exec); }
+  function requireCommand(exec, command, args) { modeAccess.requireCommand(exec, command, args); }
+  function requireRealtime(exec, name, args) { modeAccess.requireRealtime(exec, name, args); }
+
+  // A disabled session receives no plugin prompt at all. The fixed skill is
+  // user-invocable only; this dynamic context is the sole mode-specific tutorial.
+  registerModePrompt(ctx, {
+    getMode,
+    isSubagent: (agent) => agent?.session?.header?.origin === 'subagent',
+  });
 
   /* ------------------------------------------- V01: the task-level trace ----- */
 
@@ -984,10 +1049,10 @@ export function apply(ctx, config = {}) {
     const original = definition.execute;
     return {
       ...definition,
-      async execute(args, exec) {
+      async execute(args, exec, internal) {
         const record = beginSpan(definition.name, args, exec);
         try {
-          const value = await original.call(this, args, exec);
+          const value = await original.call(this, args, exec, internal);
           return endSpan(record, value);
         } catch (error) {
           failSpan(record, error);
@@ -1051,31 +1116,30 @@ export function apply(ctx, config = {}) {
   if (typeof ctx.tools?.register === 'function') {
     // 优-P0-02：app_launch 收编进「电脑操作」闸门——它能启动任意 GUI 应用，与把鼠标键盘
     // 交给模型是同一量级的授权。做法是装配层包一层 defineTool（不动 app-launch.mjs 本体）：
-    // 仅给 app_launch 的 execute 前置 requireGrant（含拒子代理），app_env_audit 只读自检免授权。
-    // `config.appLaunch.requireGrant: false` 是逃生门（独立部署想让它脱离闸门时）。
+    // app_launch 始终要求 control，app_env_audit 始终要求 watch/control；子代理仍被拒绝。
+    // 2.0 不再允许 config.appLaunch.requireGrant=false 绕过三态执行门禁。
     const appLaunchConfig = config?.appLaunch ?? {};
-    const defineAppLaunchTool = appLaunchConfig.requireGrant === false
-      ? defineTracedTool
-      : (definition) => defineTracedTool(
-          definition?.name === 'app_launch'
-            ? {
-                ...definition,
-                async execute(args, exec) {
-                  requireGrant(exec);
-                  return definition.execute.call(this, args, exec);
-                },
-              }
-            : definition,
-        );
+    const defineAppLaunchTool = (definition) => {
+      if (!['app_launch', 'app_env_audit'].includes(definition?.name)) return defineTracedTool(definition);
+      const requireMode = definition.name === 'app_launch' ? requireGrant : requireObservation;
+      return defineTracedTool({
+        ...definition,
+        async execute(args, exec) {
+          requireMode(exec);
+          return definition.execute.call(this, args, exec);
+        },
+      });
+    };
     try {
       applyAppLaunch(ctx, appLaunchConfig, { defineTool: defineAppLaunchTool });
     } catch (error) {
       ctx.logger?.warn?.(`computer-use: app-launch could not mount (${String(error)})`);
     }
     // 实时感知层（移植自 dsh-see-now 0.0.3，砍旁白/悬浮窗/后台唤醒）：computer_watch 工具。
-    // 与操控工具同一道闸门（requireGrant = 会话的「电脑操作」开关）。
+    // 观察走 requireObservation；任何写命令仍由共享 movesDesktop 门禁要求 control。
     try {
-      applySeeNow(ctx, { registerTool: safeRegister, defineTool: defineTracedTool, requireGrant });
+      const mountedWatchRuntime = applySeeNow(ctx, { registerTool: safeRegister, defineTool: defineTracedTool, requireGrant, requireObservation });
+      if (watchRuntime === null) watchRuntime = mountedWatchRuntime ?? null;
     } catch (error) {
       ctx.logger?.warn?.(`vision-control: see perception could not mount (${String(error)})`);
     }
@@ -1587,7 +1651,7 @@ export function apply(ctx, config = {}) {
    * @returns the backend result.
    */
   async function call(exec, cmd, args, options = {}) {
-    requireGrant(exec);
+    requireCommand(exec, cmd, args);
     // 参数护栏（本仓库自己的检查，不依赖宿主）：两类值在这里就挡掉，因为它们进了 worker 会以两种
     // 都不好看的方式失败——
     //   · `hwnd` 不是数字：worker 的 `[int]` 转换会抛 PowerShell 原生错误（"无法将值…转换为类型
@@ -1597,6 +1661,7 @@ export function apply(ctx, config = {}) {
     assertBackendArgs(cmd, args);
     claimController(sessionKey(exec?.agent?.session?.id), cmd, args);
     const sessionId = exec?.agent?.session?.id;
+    const writing = movesDesktop(cmd, args);
     const control = new AbortController();
     const untrack = execution.track(sessionId, control);
     const signal = combineSignals(exec?.signal, control.signal);
@@ -1608,7 +1673,11 @@ export function apply(ctx, config = {}) {
     // registry — stays in the main worker, where those citations mean something.
     const isolated = ISOLATED_READ_COMMANDS.has(cmd);
     const pickBackend = () => (isolated ? ensureReadBackend() : ensureBackend());
+    let realtimeWrite = null;
     try {
+      // Reserve before starting the legacy backend: an active RT target must reject the
+      // write before any PowerShell process or desktop input can be dispatched.
+      if (writing) realtimeWrite = realtimeHost?.beginSlowWrite(sessionKey(sessionId), args) ?? null;
       const instance = await pickBackend();
       await assertWorkerContract(instance);
       // Optional-capability gates (workerfeat A.4 / ocr O.4): unlike REQUIRED_WORKER_CAPABILITIES
@@ -1626,7 +1695,7 @@ export function apply(ctx, config = {}) {
         // A locked workstation or an open UAC prompt swallows SendInput without
         // any error, so refuse up front rather than reporting a click that never
         // happened.
-        const health = await instance.request('health', {}, { timeoutMs: 8_000, signal });
+        const health = await instance.request('health', {}, { timeoutMs: 8_000, signal, sessionKey: sessionKey(sessionId) });
         if (health.interactive !== true) {
           throw new Error(`无法操作电脑：${health.note}`);
         }
@@ -1634,7 +1703,6 @@ export function apply(ctx, config = {}) {
       // §6 item 9: while this write is really executing, the lease is *held*, not merely
       // stamped. The idle clock is restarted when the write finishes, so a long drag or a batch
       // with waits inside it cannot have its ownership expire underneath it.
-      const writing = movesDesktop(cmd, args);
       if (writing) beginWrite();
       // 新-P1-04：动作审计只记"动桌面"的调用（读与盯屏轮询不入账，否则日志被噪声淹没），
       // 成功与失败都记——复盘要的正是"试过什么、哪一步出事"。内容类参数只存长度
@@ -1646,6 +1714,7 @@ export function apply(ctx, config = {}) {
           result = await instance.request(cmd, args, {
             timeoutMs: options.timeoutMs ?? actionTimeoutMs,
             signal,
+            sessionKey: sessionKey(sessionId),
           });
         } catch (failure) {
           // A read may be repeated for free; a write may not (方案 §6.4). When the failure was a
@@ -1658,6 +1727,7 @@ export function apply(ctx, config = {}) {
             result = await retried.request(cmd, args, {
               timeoutMs: options.timeoutMs ?? actionTimeoutMs,
               signal,
+              sessionKey: sessionKey(sessionId),
             });
           } else {
             throw failure;
@@ -1679,6 +1749,7 @@ export function apply(ctx, config = {}) {
       const context = { idempotent: isIdempotentCall(cmd, args) };
       throw new Error(withOutcomeNote(decorateFailure(backendMessage(error), context), error, cmd, args));
     } finally {
+      realtimeHost?.endSlowWrite(realtimeWrite);
       untrack();
     }
   }
@@ -1699,36 +1770,62 @@ export function apply(ctx, config = {}) {
    * @param reason - text recorded on the aborted calls.
    * @returns `{ cancelled, released, error }` for the caller to report.
    */
-  async function revokeSession(sessionId, reason = 'the capability was turned off') {
+  async function revokeSession(sessionId, reason = 'the capability was turned off', { targetMode = 'disabled' } = {}) {
     const key = sessionKey(sessionId);
-    sessions.revoke(key);
+    // Downgrading to watch must revoke *write authority*, not observation. Set the new
+    // mode before awaiting any stop so no new active/legacy write can enter meanwhile.
+    if (targetMode === 'watch') sessions.setMode(key, 'watch');
+    else sessions.revoke(key);
+    // Schema visibility is part of revocation itself, not an HTTP-only follow-up. A direct
+    // computer_stop(disable_capability:true) must remove the tools before awaiting any worker.
+    visibility.deactivate(key);
+    // Publish stopping and abort legacy writes *before* waiting on RT. A slow or stuck
+    // native Worker must never leave the old PowerShell input path running in watch/disabled.
     execution.beginStop(key);
     let cancelled = execution.abort(key, reason);
-    // The browser channel belongs to the session as well: aborting its calls above stops the
-    // steps, and closing the channel stops anything else this session could still ask of it
-    // without a fresh grant (§5.1: 撤销会话时清理对应浏览器资源).
-    disposeBrowserSessionsFor(key);
+    let realtimeStop = null;
     let released = [];
     let error = '';
-    try {
-      const instance = await ensureBackend();
-      cancelled += instance.cancelAll(reason);
-      // Give the worker a moment to unwind the step it is in: a release that arrives
-      // while a drag is mid-move would be undone by the drag's own finally block.
-      const deadline = Date.now() + 800;
-      while (Date.now() < deadline && instance.outstanding > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 40));
+    if (targetMode === 'disabled') {
+      try {
+        await watchRuntime?.stop?.(sessionId);
+      } catch (failure) {
+        error = `watch stop failed: ${backendMessage(failure)}`;
       }
-      const result = await instance.request('release', {}, { timeoutMs: 5_000 });
-      released = Array.isArray(result.released) ? result.released.map(String) : [];
-    } catch (failure) {
-      error = backendMessage(failure);
+    }
+    try {
+      try {
+        realtimeStop = await realtimeHost?.stopSession(key, { revoke: targetMode === 'disabled', reason }) ?? null;
+      } catch (failure) {
+        realtimeStop = { results: [], error: `realtime stop failed: ${backendMessage(failure)}` };
+      }
+      cancelled += realtimeStop?.results?.length ?? 0;
+      // The browser channel belongs to the session as well: aborting its calls above stops the
+      // steps, and closing the channel stops anything else this session could still ask of it
+      // without a fresh grant (§5.1: 撤销会话时清理对应浏览器资源).
+      disposeBrowserSessionsFor(key);
+      error = [error, String(realtimeStop?.error ?? '')].filter(Boolean).join('; ');
+      try {
+        const instance = await ensureBackend();
+        cancelled += instance.cancelSession(key, reason);
+        // Give the worker a moment to unwind the step it is in: a release that arrives
+        // while a drag is mid-move would be undone by the drag's own finally block.
+        const deadline = Date.now() + 800;
+        while (Date.now() < deadline && instance.outstanding > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        const result = await instance.request('release', {}, { timeoutMs: 5_000, sessionKey: key });
+        released = Array.isArray(result.released) ? result.released.map(String) : [];
+      } catch (failure) {
+        error = [error, backendMessage(failure)].filter(Boolean).join('; ');
+      }
     } finally {
       execution.endStop(key);
     }
     // 新-P1-04：撤销是审计生命周期的合账点之一（grant 开、revoke/dispose 合）。
     void audit.close(key, {
-      event: 'revoke',
+      event: targetMode === 'watch' ? 'watch-downgrade' : 'revoke',
+      mode: targetMode,
       reason,
       cancelled,
       released: released.length,
@@ -2055,7 +2152,7 @@ export function apply(ctx, config = {}) {
    */
   const toolEnv = {
     safeRegister, defineTracedTool,
-    call, requireGrant, capture, reportAttachment, markObservation, normalizeTextTarget,
+    call, requireGrant, requireObservation, requireRealtime, capture, reportAttachment, markObservation, normalizeTextTarget,
     captureService, refs, execution, sessions, metrics, managedBrowsers, revokeSession,
     restartBackend, capabilityForHwnd, capabilityNote, PROFILE_COOLDOWN_MS,
     actionTimeoutMs, shotRoot, ctx,
@@ -2100,7 +2197,87 @@ export function apply(ctx, config = {}) {
 
   registerComputerLaunch(toolEnv); // 重构-1: 注册体迁出，见 tools/launch.mjs
 
-  registerComputerStop(toolEnv); // 重构-1: 注册体迁出，见 tools/stop.mjs
+  if (registerRealtimeTools !== null) {
+    try {
+      realtimeHost = registerRealtimeTools({
+        ...toolEnv,
+        config: config.realtime ?? {},
+        env: process.env,
+        logger: ctx.logger,
+        // Legacy PowerShell release-input.ps1 journals only computer_* input. It cannot prove
+        // that Rt.Worker's native scheduler/OwnedKeyWatchdog stopped or released its keys.
+        // Until a native-specific independent observer exists, keep failed active runs unknown
+        // and retain their target reservation instead of laundering legacy success as RT proof.
+        releaseTool: null,
+      });
+    } catch (error) {
+      // Registration itself is isolated per tool inside registerRealtimeTools; this outer
+      // guard covers adapter construction and preserves every already-registered legacy tool.
+      registrationFailures.push({ name: 'realtime', error: String(error?.message ?? error) });
+      ctx.logger?.error?.('computer-use: realtime adapter registration failed: %s', String(error));
+    }
+  } else {
+    ctx.logger?.warn?.('computer-use: realtime tools degraded; optional bundle could not be loaded: %s', String(realtimeModuleError?.message ?? realtimeModuleError));
+  }
+
+  // computer_stop is a global RT emergency stop even when the legacy chip is off or
+  // release_input=false. Wrap the frozen legacy definition instead of editing tools/stop.mjs,
+  // preserving its schema and all old computer_* release/revoke behaviour.
+  const realtimeStopEnv = realtimeHost ? {
+    ...toolEnv,
+    safeRegister(definition) {
+      if (definition?.name !== 'computer_stop') return safeRegister(definition);
+      const legacyExecute = definition.execute;
+      return safeRegister({
+        ...definition,
+        async execute(args, exec) {
+          // Authorize before *any* global stop side effect. A stale direct call from a
+          // disabled session must not stop other sessions' native Workers.
+          requireObservation(exec);
+          const key = sessionKey(exec?.agent?.session?.id);
+          // 权限撤销必须先于任何 RT/legacy await；后续清理失败也不会重新开放工具。
+          const revocation = args?.disable_capability === true
+            ? revokeSession(key, 'the capability was turned off by computer_stop')
+            : undefined;
+          return runModeTransition(key, async () => {
+          let rt;
+          try {
+            rt = await realtimeHost.stopAll({
+              reason: 'computer_stop',
+              revokeSessionId: args?.disable_capability === true ? key : null,
+            });
+          } catch (failure) {
+            rt = { ok: false, stopped: 0, unknown: 0, results: [], errors: [backendMessage(failure)], error: backendMessage(failure) };
+          }
+          let value;
+          try {
+            value = await legacyExecute.call(this, args, exec, { revocation });
+          } catch (failure) {
+            // With no RT work this is exactly the old path, including its NOT_AUTHORIZED
+            // refusal. If RT runs really were stopped, their evidence must not be hidden by
+            // an unrelated legacy chip refusal.
+            if ((rt.results?.length ?? 0) === 0 && !rt.error) throw failure;
+            value = {
+              released: [], count: 0, note: 'legacy input release was not available',
+              ...(args?.disable_capability === true ? { disabled: true } : {}),
+            };
+          }
+          const count = rt.results?.length ?? 0;
+          if (count > 0 || rt.error) {
+            value.cancelled = Number(value.cancelled ?? 0) + count;
+            value.note = `${value.note}; realtime: ${rt.stopped ?? 0} stopped, ${rt.unknown ?? 0} unknown`;
+            if (rt.error || (rt.unknown ?? 0) > 0) {
+              value.releaseConfirmed = false;
+              value.releaseError = [value.releaseError, rt.error || 'one or more realtime stops have unknown release evidence'].filter(Boolean).join('; ');
+            }
+          }
+          return value;
+          });
+        },
+      });
+    },
+  } : toolEnv;
+  registerComputerStop(realtimeStopEnv); // 重构-1: 注册体迁出，见 tools/stop.mjs
 
   /* ----------------------------------------------------------------- routes -- */
 
@@ -2119,9 +2296,12 @@ export function apply(ctx, config = {}) {
     supported: SUPPORTED,
     ...SUPPORTED ? {} : { reason: UNSUPPORTED_REASON },
     defaultEnabled,
-    // An unsupported platform can never be enabled, whatever the grant says; the
-    // chip reads `supported` first and never shows an on state it cannot honour.
-    enabled: SUPPORTED && isEnabled(sessionId),
+    // The legacy boolean remains true for either non-disabled mode. New clients
+    // use mode/controlEnabled so watch never gets mistaken for write authority.
+    mode: SUPPORTED ? getMode(sessionId) : 'disabled',
+    enabled: SUPPORTED && getMode(sessionId) !== 'disabled',
+    observing: SUPPORTED && getMode(sessionId) !== 'disabled',
+    controlEnabled: SUPPORTED && getMode(sessionId) === 'control',
     // What the control is doing, in the states a user has to be able to tell apart:
     // 仅观察 / 可操作 / 执行中 / 停止中 / 已停止 (plus 未开启). A single on/off bit cannot
     // express "stopping", which is exactly the state a user needs to see after pressing
@@ -2167,10 +2347,20 @@ export function apply(ctx, config = {}) {
             if (req.method === 'POST') {
               const body = await readJsonBody(req);
               const sessionId = body.sessionId ?? url.searchParams.get('sessionId') ?? undefined;
-              if (typeof body.enabled !== 'boolean') {
-                sendJson(res, 400, { ok: false, error: 'enabled must be a boolean' });
+              const hasMode = Object.prototype.hasOwnProperty.call(body, 'mode');
+              if (hasMode && !['disabled', 'watch', 'control'].includes(body.mode)) {
+                sendJson(res, 400, { ok: false, error: 'mode must be disabled, watch, or control' });
                 return;
               }
+              if (!hasMode && typeof body.enabled !== 'boolean') {
+                sendJson(res, 400, { ok: false, error: 'mode is required (legacy enabled must be a boolean)' });
+                return;
+              }
+              if (hasMode && body.enabled !== undefined) {
+                sendJson(res, 400, { ok: false, error: 'send either mode or legacy enabled, not both' });
+                return;
+              }
+              const requestedMode = hasMode ? body.mode : (body.enabled ? 'control' : 'disabled');
               if (sessionId === undefined || sessionId === null || String(sessionId) === '') {
                 sendJson(res, 400, { ok: false, error: 'sessionId is required' });
                 return;
@@ -2182,36 +2372,66 @@ export function apply(ctx, config = {}) {
                 sendJson(res, 403, { ok: false, error: 'sessionId is not a live session of this host' });
                 return;
               }
-              if (!SUPPORTED && body.enabled === true) {
+              if (!SUPPORTED && requestedMode !== 'disabled') {
                 sendJson(res, 409, { ok: false, error: UNSUPPORTED_REASON, supported: false });
                 return;
               }
-              if (body.enabled === true) {
-                sessions.grant(sessionId);
+              return await runModeTransition(sessionId, async () => {
+              if (requestedMode !== 'disabled') {
+                let downgrade = null;
+                if (requestedMode === 'watch' && getMode(sessionId) === 'control') {
+                  // Losing control is a real stop, not just a schema filter: already-dispatched
+                  // active runs, key holds and legacy writes must be quiesced before watch is shown.
+                  downgrade = await revokeSession(sessionId, 'the user selected 仅观看', { targetMode: 'watch' });
+                } else {
+                  if (typeof sessions.setMode === 'function') sessions.setMode(sessionId, requestedMode);
+                  else if (requestedMode === 'control') sessions.grant(sessionId);
+                  else throw new Error('watch mode requires the 2.0 session store');
+                  // This route is the explicit user re-enable that the RT revocation contract
+                  // requires. Never clear it from a model/tool call.
+                  realtimeHost?.resumeSession?.(sessionKey(sessionId));
+                }
                 // 新-P1-04：授权是审计生命周期的开账点。
-                audit.record(sessionKey(sessionId), { event: 'grant' });
+                audit.record(sessionKey(sessionId), { event: 'mode', mode: requestedMode });
                 // Turning it on is also what un-hides the tool schemas for that session.
                 // `activate` and not a bare `sync(agentOf(...))`: when no live agent is
                 // registered for this session the restriction is lifted anyway. A chip the
                 // user has switched on must not be able to leave its tools hidden just
                 // because the agent was never registered (see schema-visibility.mjs).
                 const visibilityAfter = visibility.activate(sessionKey(sessionId));
-                ctx.logger?.info?.('computer-use: session %s grant -> true (schemas %s)', sessionKey(sessionId), SUPPORTED ? visibilityAfter : 'n/a');
+                ctx.logger?.info?.('computer-use: session %s mode -> %s (schemas %s)', sessionKey(sessionId), requestedMode, SUPPORTED ? visibilityAfter : 'n/a');
                 // Turning the capability on is the moment the user has said yes; get
                 // the worker ready now rather than inside the model's first click.
-                warmBackend();
-                sendJson(res, 200, { ...statePayload(sessionId), toolSchemas: SUPPORTED ? visibilityAfter : null });
+                if (requestedMode === 'control') warmBackend();
+                const transitionError = downgrade?.error ? `已切换为仅观看，但停止/释放未完全确认：${downgrade.error}` : null;
+                sendJson(res, transitionError ? 409 : 200, {
+                  ...statePayload(sessionId),
+                  ...(transitionError ? { ok: false, error: transitionError } : {}),
+                  toolSchemas: SUPPORTED ? visibilityAfter : null,
+                  ...(downgrade === null ? {} : { downgraded: {
+                    cancelled: downgrade.cancelled,
+                    released: downgrade.released,
+                    error: downgrade.error === '' ? null : downgrade.error,
+                  } }),
+                });
                 return;
               }
               // Turning it off is a stop, not a bookkeeping change: revoke, cancel what is
               // in flight, and unwind what the worker is still holding — and only report
               // the new state once that has actually happened.
-              const outcome = await revokeSession(sessionId, 'the user turned 电脑操作 off');
+              const outcome = await revokeSession(sessionId, 'the user selected 禁用功能');
               // …and with the capability off, its schemas stop riding along in every request.
               const visibilityAfter = visibility.deactivate(sessionKey(sessionId));
               ctx.logger?.info?.('computer-use: session %s grant -> false (%d cancelled, %d released)%s', sessionKey(sessionId), outcome.cancelled, outcome.released.length, outcome.error === '' ? '' : `, release failed: ${outcome.error}`);
-              sendJson(res, 200, { ...statePayload(sessionId), toolSchemas: SUPPORTED ? visibilityAfter : null, revoked: { cancelled: outcome.cancelled, released: outcome.released, error: outcome.error === '' ? null : outcome.error } });
+              const transitionError = outcome.error ? `已禁用功能，但停止/释放未完全确认：${outcome.error}` : null;
+              sendJson(res, transitionError ? 409 : 200, {
+                ...statePayload(sessionId),
+                ...(transitionError ? { ok: false, error: transitionError } : {}),
+                toolSchemas: SUPPORTED ? visibilityAfter : null,
+                revoked: { cancelled: outcome.cancelled, released: outcome.released, error: outcome.error === '' ? null : outcome.error },
+              });
               return;
+              });
             }
             sendJson(res, 405, { ok: false, error: 'use GET or POST' });
           } catch (error) {
@@ -2224,6 +2444,62 @@ export function apply(ctx, config = {}) {
         },
       }),
       'computer-use: state route',
+    );
+
+    scoped.effect(
+      () => scoped.webServer.register({
+        kind: 'exact',
+        path: `${ROUTE}/watch`,
+        handler: async (req, res) => {
+          try {
+            const rejection = admitStateRequest(req);
+            if (rejection !== null) {
+              sendJson(res, rejection.status, { ok: false, error: rejection.message });
+              return;
+            }
+            if (req.method !== 'POST') {
+              sendJson(res, 405, { ok: false, error: 'use POST' });
+              return;
+            }
+            const body = await readJsonBody(req);
+            const sessionId = body.sessionId;
+            if (sessionId === undefined || sessionId === null || String(sessionId) === '') {
+              sendJson(res, 400, { ok: false, error: 'sessionId is required' });
+              return;
+            }
+            if (body.action !== 'stop') {
+              sendJson(res, 400, { ok: false, error: "action must be 'stop'" });
+              return;
+            }
+            const agents = typeof ctx.get === 'function' ? ctx.get('agents') : undefined;
+            if (agents !== undefined && typeof agents.get === 'function' && agents.get(String(sessionId)) === undefined) {
+              sendJson(res, 403, { ok: false, error: 'sessionId is not a live session of this host' });
+              return;
+            }
+            if (!SUPPORTED || getMode(sessionId) === 'disabled') {
+              sendJson(res, 409, { ok: false, error: '[NOT_AUTHORIZED] watch/control mode is required to stop watching' });
+              return;
+            }
+            try {
+              await watchRuntime?.stop?.(sessionId);
+              sendJson(res, 200, statePayload(sessionId));
+            } catch (failure) {
+              sendJson(res, 409, {
+                ...statePayload(sessionId),
+                ok: false,
+                error: `停止盯屏未完全确认：${backendMessage(failure)}`,
+              });
+            }
+          } catch (error) {
+            if (error instanceof StateRequestError) {
+              sendJson(res, error.status, { ok: false, error: error.message });
+              return;
+            }
+            sendJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+          }
+        },
+      }),
+      'computer-use: watch route',
     );
 
     scoped.effect(
@@ -2246,7 +2522,9 @@ export function apply(ctx, config = {}) {
             const health = await instance.request('health', {}, { timeoutMs: startTimeoutMs }).catch(() => null);
             sendJson(res, 200, {
               ok: true,
-              enabled: isEnabled(sessionId),
+              mode: getMode(sessionId),
+              enabled: sessions.canObserve(sessionId),
+              controlEnabled: sessions.canControl(sessionId),
               dpi: info.dpi,
               screens: info.screens,
               virtual: info.virtual,
@@ -2307,7 +2585,9 @@ export function apply(ctx, config = {}) {
                 ? null
                 : {
                   sessionId,
-                  enabled: SUPPORTED && isEnabled(sessionId),
+                  mode: SUPPORTED ? getMode(sessionId) : 'disabled',
+                  enabled: SUPPORTED && sessions.canObserve(sessionId),
+                  controlEnabled: SUPPORTED && sessions.canControl(sessionId),
                   toolSchemas: visibility.toolSchemaState(sessionKey(sessionId)),
                 },
             });
@@ -2326,7 +2606,13 @@ export function apply(ctx, config = {}) {
    * workspace, and deleting a whole directory the plugin does not exclusively own
    * would be rude.
    */
-  ctx.effect(() => () => {
+  ctx.effect(() => async () => {
+    // Stop RT before disposing the legacy backend: an unknown active lease may still need
+    // that independent release path. The returned promise lets hosts and tests await the
+    // actual estop/release evidence instead of merely scheduling best-effort cleanup.
+    try { await realtimeHost?.dispose(); } catch (failure) {
+      ctx.logger?.error?.('computer-use: realtime dispose failed: %s', String(failure));
+    }
     backend?.dispose();
     backend = null;
     // The isolated read worker is a second process this plugin started, so it is a second
@@ -2340,26 +2626,24 @@ export function apply(ctx, config = {}) {
     // §A: free the host-wide ownership slot. A later mount (after a profile change or a test
     // teardown) must be able to claim it instead of being reported as a duplicate forever.
     releaseOwnership();
-    void (async () => {
-      try {
-        // 新-P1-04：先合审计流，再动文件——审计目录在 shotRoot/audit，不在下面被删的
-        // instanceRoot 里，所以审计本身不会被这次清理带走。
-        await audit.closeAll().catch(() => {});
-        // 登记表里的先删 —— 包括"抓完了还没交给任何会话"的残渣。
-        await captureService.releaseAll().catch(() => {});
-        const { readdir } = await import('node:fs/promises');
-        // 兜底：本进程此前产出的、没进登记表的残留。
-        const entries = await readdir(shotRoot).catch(() => []);
-        await Promise.all(entries
-          .filter((entry) => entry.includes(`capture-${process.pid}-`))
-          .map((entry) => rm(join(shotRoot, entry), { force: true }).catch(() => {})));
-        // worker 落在系统临时目录的关联帧（它拿不到截图目录的那些路径）。
-        await releaseStrayFrames({ olderThanMs: 0 });
-        // 本实例的标记目录（cancel / held-input 的 flag 文件）。
-        await rm(instanceRoot, { recursive: true, force: true }).catch(() => {});
-      } catch {
-        /* best effort */
-      }
-    })();
+    try {
+      // 新-P1-04：先合审计流，再动文件——审计目录在 shotRoot/audit，不在下面被删的
+      // instanceRoot 里，所以审计本身不会被这次清理带走。
+      await audit.closeAll().catch(() => {});
+      // 登记表里的先删 —— 包括"抓完了还没交给任何会话"的残渣。
+      await captureService.releaseAll().catch(() => {});
+      const { readdir } = await import('node:fs/promises');
+      // 兜底：本进程此前产出的、没进登记表的残留。
+      const entries = await readdir(shotRoot).catch(() => []);
+      await Promise.all(entries
+        .filter((entry) => entry.includes(`capture-${process.pid}-`))
+        .map((entry) => rm(join(shotRoot, entry), { force: true }).catch(() => {})));
+      // worker 落在系统临时目录的关联帧（它拿不到截图目录的那些路径）。
+      await releaseStrayFrames({ olderThanMs: 0 });
+      // 本实例的标记目录（cancel / held-input 的 flag 文件）。
+      await rm(instanceRoot, { recursive: true, force: true }).catch(() => {});
+    } catch {
+      /* best effort */
+    }
   }, 'computer-use: backend lifetime');
 }

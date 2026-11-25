@@ -61,7 +61,7 @@ export function createExecutionRegistry() {
   /** sessionKey -> 该会话在飞调用的 AbortController 集合。 */
   const inFlight = new Map();
   /** 正在撤销（"停止中"）的会话。 */
-  const stopping = new Set();
+  const stopping = new Map();
 
   /**
    * 登记一次调用。
@@ -112,11 +112,19 @@ export function createExecutionRegistry() {
   }
 
   /** 这个会话是否正在撤销（芯片据此显示"停止中"）。 */
-  const isStopping = (sessionId) => stopping.has(sessionKey(sessionId));
+  const isStopping = (sessionId) => (stopping.get(sessionKey(sessionId)) ?? 0) > 0;
   /** 标记撤销开始。 */
-  const beginStop = (sessionId) => stopping.add(sessionKey(sessionId));
+  const beginStop = (sessionId) => {
+    const key = sessionKey(sessionId);
+    stopping.set(key, (stopping.get(key) ?? 0) + 1);
+  };
   /** 标记撤销结束。 */
-  const endStop = (sessionId) => stopping.delete(sessionKey(sessionId));
+  const endStop = (sessionId) => {
+    const key = sessionKey(sessionId);
+    const count = stopping.get(key) ?? 0;
+    if (count <= 1) stopping.delete(key);
+    else stopping.set(key, count - 1);
+  };
 
   /**
    * 在会话的执行上下文里跑一次**非 worker** 调用（浏览器通道）。

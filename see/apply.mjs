@@ -67,12 +67,55 @@ export function sheetRegionLines(sheet) {
  * @param deps.defineTool    index.js 的 defineTracedTool
  * @param deps.requireGrant  电脑操作的会话闸门（电脑操作 chip）
  */
-export function applySeeNow(ctx, { registerTool, defineTool, requireGrant }) {
+export function createWatchRuntimeFacade(runner) {
+  let generation = 0;
+  const subscriptions = new Map();
+  const keyOf = (sessionId) => String(sessionId ?? '');
+  const hasCurrentSubscriber = () => [...subscriptions.values()].includes(generation);
+
+  return {
+    subscribe(sessionId) {
+      const key = keyOf(sessionId);
+      if (runner.status()?.running !== true) {
+        generation += 1;
+        subscriptions.clear();
+      } else {
+        const owner = [...subscriptions.entries()].find(([, value]) => value === generation)?.[0];
+        if (owner !== undefined && owner !== key) {
+          const error = new Error('another session currently owns the continuous watch capture');
+          error.code = 'WATCH_BUSY_OTHER_SESSION';
+          throw error;
+        }
+      }
+      subscriptions.set(key, generation);
+    },
+    status(sessionId) {
+      const status = runner.status() ?? {};
+      const subscribed = subscriptions.get(keyOf(sessionId)) === generation;
+      return subscribed ? status : { ...status, running: false };
+    },
+    stop(sessionId) {
+      subscriptions.delete(keyOf(sessionId));
+      if (hasCurrentSubscriber()) return { stopped: true, shared: true };
+      generation += 1;
+      subscriptions.clear();
+      return runner.stop();
+    },
+    stopAll() {
+      generation += 1;
+      subscriptions.clear();
+      return runner.stop();
+    },
+  };
+}
+
+export function applySeeNow(ctx, { registerTool, defineTool, requireGrant, requireObservation, runnerFactory = createRunner }) {
   const log = (m) => { try { ctx?.logger?.info?.(`[vision-control/see] ${m}`); } catch { /* ignore */ } };
-  const runner = createRunner({ ffmpegPath: resolveFfmpeg(), log });
-  ctx.on('dispose', () => { try { runner.stop(); } catch { /* ignore */ } });
-  // 引擎探测预热：ddagrab/gdigrab 的试跑（~400ms）摊到注册期，首个 watch 的首帧不再付冷启动尖峰
-  try { runner.preheat()?.catch?.(() => { /* 探测失败留给首个 watch 按原惰性路径兜底 */ }); } catch { /* 同上 */ }
+  const runner = runnerFactory({ ffmpegPath: resolveFfmpeg(), log });
+  const watchFacade = createWatchRuntimeFacade(runner);
+  ctx.on('dispose', () => { try { watchFacade.stopAll(); } catch { /* ignore */ } });
+  // 不在注册期预热采集，避免禁用状态仍抓取并丢弃探针帧。
+  // disabled 默认态不预捕获；引擎在首次获授权观察时惰性初始化。
   /** 固定说明（坐标换算 + 注意事项）给过没有：首图必出、换档图必出，其余图免念（ux P1-4）。 */
   let sheetExplained = false;
   /** 上次回执报告过的丢图数：只在**新增**丢弃时提醒一次，不每轮都念。 */
@@ -235,20 +278,20 @@ export function applySeeNow(ctx, { registerTool, defineTool, requireGrant }) {
     timeoutMs: TOOL_TIMEOUT_MS,
     isConcurrencySafe() { return false; },   // 只有一个采集进程
     async execute(args, exec) {
-      requireGrant(exec);
+      (requireObservation ?? requireGrant)(exec);
       const action = String(args.action ?? 'watch').toLowerCase();
       const sessionId = exec?.agent?.session?.id;
 
       if (action === 'status') {
-        return toLosslessJson({ text: JSON.stringify(runner.status(), null, 2), image: null, meta: { action } });
+        return toLosslessJson({ text: JSON.stringify(watchFacade.status(sessionId), null, 2), image: null, meta: { action } });
       }
       if (action === 'stop') {
-        const r = runner.stop();
+        const r = watchFacade.stop(sessionId);
         return toLosslessJson({ text: `采集已停止。${JSON.stringify(r)}`, image: null, meta: { action } });
       }
 
       if (action === 'peek') {
-        const sheet = runner.peek();
+        const sheet = watchFacade.status(sessionId).running === true ? runner.peek() : null;
         if (!sheet) return toLosslessJson({ text: '队列里还没有图（采集可能刚开或屏幕一直静止）。用 watch 等一张。', image: null, meta: { action } });
         const admitted = await admitSheet(sheet, sessionId);
         return toLosslessJson({
@@ -273,6 +316,7 @@ export function applySeeNow(ctx, { registerTool, defineTool, requireGrant }) {
           ? { kind: args.source, path: args.path, realtime: args.realtime === true }
           : null;
       const seconds = Math.min(MAX_BLOCK_SEC, Math.max(2, Number(args.seconds ?? DEFAULT_BLOCK_SEC)));
+      watchFacade.subscribe(sessionId);
       const r = await runner.watch({
         seconds,
         minFrames: Math.max(1, Number(args.minFrames ?? 1)),
@@ -282,6 +326,7 @@ export function applySeeNow(ctx, { registerTool, defineTool, requireGrant }) {
         signal: exec?.signal ?? null,
       });
       if (!r.ok) {
+        if (r.reason === 'busy' || r.reason === 'start-failed' || r.reason === 'cancelled') watchFacade.stop(sessionId);
         return toLosslessJson({
           text: `没拿到图：${r.reason}（等了 ${r.waited.toFixed(1)}s）${r.error ? `；${r.error}` : ''}。屏幕静止时长不出新帧是正常的——用 status 看采集活着没。`,
           image: null,
@@ -298,4 +343,7 @@ export function applySeeNow(ctx, { registerTool, defineTool, requireGrant }) {
   }));
 
   log('computer_watch 已注册（实时感知层）');
+  // Host-only facade for the chip's authoritative watch state and stop route.
+  // The model still uses computer_watch; this does not add another tool or permission path.
+  return watchFacade;
 }

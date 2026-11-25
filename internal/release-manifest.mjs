@@ -24,29 +24,27 @@ export const PACKAGE_ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** 清单文件名；它自己不进哈希集合，否则会形成自引用。 */
 export const MANIFEST_NAME = 'release-manifest.json';
 
-/** Root-level files that are part of the installed package. */
-const ROOT_FILES = [
-  'index.js',
-  'client.js',
-  'doctor.mjs',
-  'setup.mjs',
-  'package.json',
-  'cordis.patch.yml',
-  'INSTALL.md',
-  'README.md',
-  'VERIFICATION.md',
-  'LICENSE',
-  // 安装入口也是用户会执行的生产文件：1.40.2 里它们变了却不影响 releaseBuildId，
-  // 于是“同一个 1.40.2”可以有两种安装行为（研究报告 P1-C）。
-  'install-and-repair.cmd',
-  'fix-profile-links.cmd',
+/** Runtime entry points that must exist even if package.json files is edited incorrectly. */
+const REQUIRED_ROOT_FILES = ['index.js', 'client.js', 'package.json', 'cordis.patch.yml'];
+
+/** Entry points whose absence makes an otherwise self-consistent archive unusable. */
+const REQUIRED_RUNTIME_FILES = [
+  'backend/worker.ps1',
+  'backend/bridge.js',
+  'backend/release-input.ps1',
+  'backend/parts-manifest.json',
 ];
 
-/** Installer helpers that live under tools/ but are executed by users. */
-const INSTALLER_FILES = ['tools/fix-profile-links.ps1'];
-
-/** Directories whose every file is executed or read at runtime. */
-const RUNTIME_DIRS = ['backend', 'browser', 'internal'];
+/**
+ * Directories whose every file is executed or read at runtime.
+ *
+ * This list must cover **every directory `package.json` `files` ships**: a directory that is
+ * distributed but not hashed lets two different builds carry the same `releaseBuildId`, so a
+ * half-updated install still "matches" (the P1-C class of bug). `see/` is the capture pipeline the
+ * tools spawn, `tools/` is the CLI surface users and hosts invoke, and `skills/` holds the
+ * SKILL.md the agent reads before acting.
+ */
+const RUNTIME_DIRS = ['backend', 'browser', 'internal', 'see', 'skills', 'tools', 'realtime'];
 
 /** The optional preset bundle is shipped in the same zip but installed separately. */
 const PRESET_FILES = [
@@ -84,6 +82,9 @@ function walk(root, directory, list = []) {
   try {
     entries = readdirSync(absolute, { withFileTypes: true });
   } catch {
+    // A required directory that cannot be read is a release hole, not an empty directory.
+    // Keep its name as a marker; buildReleaseIdentity will report it in `missing`.
+    list.push(directory);
     return list;
   }
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
@@ -102,28 +103,46 @@ function walk(root, directory, list = []) {
  * @param root - package root.
  * @returns sorted package-relative paths with forward slashes.
  */
+function requiredDirectories(root) {
+  const declared = readPackageManifest(root).manifest?.files;
+  const packageFiles = Array.isArray(declared)
+    ? declared.filter((name) => typeof name === 'string' && name.length > 0)
+    : [];
+  const declaredDirectories = packageFiles.filter((name) => {
+    try {
+      return statSync(join(root, name)).isDirectory();
+    } catch {
+      return false;
+    }
+  });
+  return [...new Set([...RUNTIME_DIRS, ...declaredDirectories])];
+}
+
 export function productionFiles(root = PACKAGE_ROOT) {
   const names = [];
-  for (const name of ROOT_FILES) {
-    try {
-      if (statSync(join(root, name)).isFile() && isProductionName(name)) names.push(name);
-    } catch {
-      // Missing files are reported by buildReleaseIdentity, not hidden here.
-    }
+  const declared = readPackageManifest(root).manifest?.files;
+  const packageFiles = Array.isArray(declared)
+    ? declared.filter((name) => typeof name === 'string' && name.length > 0)
+    : [];
+  const directories = requiredDirectories(root);
+  const rootFiles = [...new Set([
+    ...REQUIRED_ROOT_FILES,
+    ...REQUIRED_RUNTIME_FILES,
+    ...packageFiles.filter((name) => !directories.includes(name) && !PRESET_FILES.includes(name)),
+  ])];
+
+  // Required names stay in the list even when absent. This is what lets
+  // buildReleaseIdentity produce { sha256: null } and `missing` instead of silently
+  // blessing an incomplete tree with a valid manifest.
+  for (const name of rootFiles) {
+    if (isProductionName(name)) names.push(name);
   }
-  for (const directory of RUNTIME_DIRS) walk(root, directory, names);
-  for (const name of INSTALLER_FILES) {
-    try {
-      if (statSync(join(root, name)).isFile() && isProductionName(name)) names.push(name);
-    } catch {
-      // Missing installer helpers are reported by buildReleaseIdentity, not hidden here.
-    }
-  }
+  for (const directory of directories) walk(root, directory, names);
   for (const name of PRESET_FILES) {
     try {
       if (statSync(join(root, name)).isFile() && isProductionName(name)) names.push(name);
     } catch {
-      // Optional before the preset split lands; the identity simply omits it.
+      // Optional preset files are omitted when absent.
     }
   }
   return [...new Set(names)].sort((a, b) => a.localeCompare(b));
@@ -168,6 +187,28 @@ export function buildReleaseIdentity(root = PACKAGE_ROOT, { files } = {}) {
     } catch {
       entries.push({ name, bytes: null, sha256: null });
       missing.push(name);
+    }
+  }
+  // A directory replaced by a regular file can otherwise be hashed as if it were a
+  // production file. Empty required directories are equally invalid even though npm
+  // silently omits them. Explicit `files` overrides remain low-level test/fixture APIs.
+  if (files === undefined) {
+    for (const directory of requiredDirectories(root)) {
+      let directoryExists = false;
+      try { directoryExists = statSync(join(root, directory)).isDirectory(); } catch { /* missing */ }
+      const hasPayload = names.some((name) => {
+        if (!name.startsWith(directory + '/')) return false;
+        try { return statSync(join(root, name)).isFile(); } catch { return false; }
+      });
+      if (directoryExists && hasPayload) continue;
+      const existing = entries.find((entry) => entry.name === directory);
+      if (existing) {
+        existing.bytes = null;
+        existing.sha256 = null;
+      } else {
+        entries.push({ name: directory, bytes: null, sha256: null });
+      }
+      if (!missing.includes(directory)) missing.push(directory);
     }
   }
   const digest = createHash('sha256');

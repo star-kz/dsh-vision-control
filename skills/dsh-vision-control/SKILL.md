@@ -1,18 +1,25 @@
 ---
 name: dsh-vision-control
-description: 实时视觉感知 + 精确桌面操控的标准使用教程（DSH-Vision-Control 插件）。当任务需要看屏幕、观察界面变化、点击/输入/拖拽、操作窗口与桌面应用、GUI 自动化、滑块/人机验证、或用户说"帮我点/看着屏幕/操作电脑/打开某个软件"时使用。Triggers: 操作电脑、点一下、帮我点、看着屏幕、盯梢、screen watch、screenshot、click、type、drag、desktop automation、GUI automation、human verification、slider。注意：需用户已在输入框工具栏点亮电脑图标授权「电脑操作」。
+description: DSH-Vision-Control 2.0 三态电脑视觉与操控的人工参考教程。模型自动加载由会话模式系统提示接管；用户可显式查阅本教程。
+disable-model-invocation: true
 metadata:
   author: star-kz
-  version: "1.0.0"
+  version: "3.0.1"
 ---
 
 # DSH-Vision-Control 使用教程
 
 给 AI 一双眼睛和一双手：`computer_watch` 实时看屏幕变化（省 token 的余光），`computer_*` 15 个工具精确操控桌面。
 
-## 0. 前置：授权闸门
+## 0. 前置：三态模式与提示词隔离
 
-所有 computer_* 工具受「电脑操作」授权控制——用户必须在输入框工具栏点亮 **电脑图标**（无文字，点一下）。未授权时工具返回 `[NOT_AUTHORIZED]...`，这时**提醒用户点图标**，不要重试。
+点击输入框工具栏的当前模式图标，会在独立浮层中竖向展开三个选项（不撑开对话框）：
+
+- **禁用功能（禁止线性图标）**：模型不会看到本插件的工具 schema、技能目录条目或电脑操作提示词；直接绕过界面调用也会得到 `[NOT_AUTHORIZED]`。
+- **仅观看（眼睛线性图标）**：只向模型提供观察、状态、停止、shadow/replay 等只读能力；鼠标键盘、剪贴板写入、窗口聚焦、应用启动和 realtime active 均返回 `[CONTROL_REQUIRED]`。
+- **观看+操作（电脑线性图标）**：开放完整观察和操控能力。
+
+权限按会话隔离，新会话默认禁用，子代理始终不能使用。2.0 的模式工作流由宿主动态系统提示注入；本文件标记 `disable-model-invocation: true`，避免固定教程绕开模式进入模型目录，只保留给用户显式查阅。
 
 ## 1. 工具族速览
 
@@ -96,7 +103,8 @@ computer_watch({ action: "stop" })                  // 收工
 | 症状 | 处置 |
 |---|---|
 | 失败文本带 `[CODE · retry=X]` 头 | 统一格式：`retry=X` 是重试判据——`never`（重发无意义，按 hint 修正参数/目标）/ `retry`（可直接重发；非幂等调用时 hint 会改口"先观察"，照做）/ `reobserve`（先 `computer_ui` / `computer_screenshot` 观察再决定）。头下面的「下一步：」行动句照做 |
-| `[NOT_AUTHORIZED]` | 让用户点输入框工具栏的电脑图标 |
+| `[NOT_AUTHORIZED]` | 当前禁用；让用户从电脑图标菜单选择「仅观看」或「观看+操作」 |
+| `[CONTROL_REQUIRED]` | 当前仅观看；写操作或 realtime active 需要用户切换「观看+操作」 |
 | watch 返回缺 ffmpeg / 采集失败 | 装 ffmpeg（[gyan.dev](https://www.gyan.dev/ffmpeg/builds/)）并把 `bin` 加进 PATH，或设 `DSH_FFMPEG_PATH` |
 | `[TARGET_OCCLUDED]` | 目标被别的窗口盖住：先 `computer_windows` 置前，或 click 加 `allow_activate:true` |
 | `[STALE_REF]` | ref 过期，重新 `computer_ui` 读一次再动 |

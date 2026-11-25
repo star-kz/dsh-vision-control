@@ -43,6 +43,9 @@ const DEFAULT_SCRIPT = join(HERE, 'worker.ps1');
 const RELEASE_SCRIPT = join(HERE, 'release-input.ps1');
 /** How long that path may take. It sends two events; anything slower is not helping. */
 const RELEASE_TIMEOUT_MS = 4_000;
+// start() 等待 stopping 时必须覆盖“先独立释放、再 kill”的最坏预算。
+// 旧的固定 2s 上限会在 4s 释放尚未返回时提前换代。
+const STOP_TIMEOUT_MS = RELEASE_TIMEOUT_MS + 2_000;
 
 /**
  * Candidate PowerShell hosts live in `internal/powershell.mjs` so that a reader which only wants to
@@ -125,12 +128,17 @@ export class PowerShellBackend {
   #state = 'idle';
   /** Resolves when the process this backend killed has actually exited. */
   #exitPromise = null;
+  /** 每代 child 共享一次停止与一次独立释放，避免 timeout/stop/dispose 重入。 */
+  #stopPromise = null;
+  #releasePromise = null;
+  #releaseScriptPath;
   /** Where the worker mirrors held input, so a force-kill can release it (§6 item 4). */
   #heldFilePath;
   /** What the last force-kill's independent release said. */
   #lastRelease = null;
   constructor(options = {}) {
     this.#script = options.scriptPath ?? DEFAULT_SCRIPT;
+    this.#releaseScriptPath = options.releaseScriptPath ?? RELEASE_SCRIPT;
     this.#command = options.powerShell ?? resolvePowerShell();
     this.#defaultTimeoutMs = options.timeoutMs ?? 30_000;
     // Startup is slower than any single command (Add-Type compiles the P/Invoke helpers
@@ -185,9 +193,33 @@ export class PowerShellBackend {
   async start() {
     if (this.#disposed) throw new ComputerUseBackendError('the computer-use backend has been disposed', 'DISPOSED');
     if (this.#ready !== null && (this.#state === 'starting' || this.#state === 'ready')) return this.#ready;
+    // Independent release sends real key/mouse-up events. Even if the old worker
+    // has already exited and teardown made the state idle, a new generation must
+    // not accept input until that release has finished. All callers share the
+    // same pending release; the first continuation performs the single replacement.
+    const pendingRelease = this.#releasePromise;
+    if (pendingRelease !== null) {
+      await pendingRelease;
+      if (this.#disposed) throw new ComputerUseBackendError('the computer-use backend has been disposed', 'DISPOSED');
+      if (this.#ready !== null && (this.#state === 'starting' || this.#state === 'ready')) return this.#ready;
+    }
     // A worker was killed to break a stuck call: wait for that process to be gone before
     // binding a new request to anything (§5.12: 超时后等待旧实例退出或隔离).
-    if (this.#state === 'stopping') await this.#exited();
+    if (this.#state === 'stopping') {
+      // Capture the dying generation *before* awaiting. Another waiter may spawn its
+      // replacement while this continuation is queued; reading #child afterwards would
+      // then mistake that healthy new process for the old one and falsely reject.
+      const previous = this.#child;
+      await (this.#stopPromise ?? this.#exited(previous));
+      // All waiters share the one replacement started by the first continuation.
+      if (this.#ready !== null && (this.#state === 'starting' || this.#state === 'ready')) return this.#ready;
+      if (previous && previous.exitCode === null && previous.signalCode === null) {
+        throw new ComputerUseBackendError(
+          `previous worker pid=${previous.pid} is still alive after stop; refusing to start another generation`,
+          'WORKER_STOP_TIMEOUT',
+        );
+      }
+    }
     if (this.#disposed) throw new ComputerUseBackendError('the computer-use backend has been disposed', 'DISPOSED');
     if (!existsSync(this.#script)) {
       throw new ComputerUseBackendError(`computer-use worker script not found at ${this.#script}`, 'NO_WORKER_SCRIPT');
@@ -195,6 +227,8 @@ export class PowerShellBackend {
     // A stale marker from an earlier worker would cancel this one's first request.
     this.#clearCancelFile();
     this.#state = 'starting';
+    this.#stopPromise = null;
+    this.#releasePromise = null;
     const child = spawn(
       this.#command,
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', this.#script],
@@ -229,19 +263,30 @@ export class PowerShellBackend {
         // this same message and the capability never recovered.
         this.#failReady(error);
         this.#failOutstanding(new ComputerUseBackendError('the computer-use worker did not start', 'WORKER_EXITED'));
-        this.#stopChild(child);
-        this.#teardown();
+        // Rejection only means readiness timed out; it is not evidence that the
+        // process died. Keep the stopping/child state until its real exit so an
+        // immediate retry waits for independent release and the old generation.
+        void this.#stopChild(child);
       }, this.#startTimeoutMs);
       this.#readyTimer = timer;
       this.#readyResolve = resolve;
       this.#readyReject = reject;
     });
-    // A synchronous spawn failure (missing executable) surfaces as an 'error' event.
+    // 'error' covers both "could not spawn" and "could not be killed".
+    // Only the former proves there is no worker generation to retain. A kill
+    // failure after a PID exists must keep the child/stopping state until a real
+    // exit; treating that error as exit would let a replacement overlap the old
+    // process and its desktop input.
     child.on('error', (error) => {
       if (this.#child !== child) return;
-      this.#failReady(new ComputerUseBackendError(`could not spawn ${this.#command}: ${error.message}`, 'SPAWN_FAILED'));
-      this.#failOutstanding(new ComputerUseBackendError(`could not spawn ${this.#command}`, 'SPAWN_FAILED'));
-      this.#teardown();
+      if (child.pid === undefined) {
+        this.#failReady(new ComputerUseBackendError(`could not spawn ${this.#command}: ${error.message}`, 'SPAWN_FAILED'));
+        this.#failOutstanding(new ComputerUseBackendError(`could not spawn ${this.#command}`, 'SPAWN_FAILED'));
+        this.#teardown();
+        return;
+      }
+      this.#stderr.push(`\nworker pid=${child.pid} error: ${error.message}\n`);
+      if (!this.#disposed) this.#state = 'stopping';
     });
 
     this.#lines = createInterface({ input: child.stdout });
@@ -308,16 +353,27 @@ export class PowerShellBackend {
    * @param child - the process to stop; defaults to the current one.
    * @returns a promise for the process actually being gone.
    */
-  async #stopChild(child = this.#child) {
+  #stopChild(child = this.#child) {
     if (child === null || child === undefined) return Promise.resolve();
+    if (this.#stopPromise) return this.#stopPromise;
     if (!this.#disposed) this.#state = 'stopping';
-    await this.#releaseHeldInput();
-    try {
-      if (child.exitCode === null) child.kill();
-    } catch {
-      /* the process is already gone */
-    }
-    return this.#exited(child);
+    const stopping = (async () => {
+      try {
+        await this.#releaseHeldInput();
+      } finally {
+        try {
+          if (child.exitCode === null && child.signalCode === null) {
+            const accepted = child.kill();
+            if (accepted === false) this.#stderr.push(`\nkill for worker pid=${child.pid} returned false; waiting for a real exit\n`);
+          }
+        } catch {
+          /* the process is already gone */
+        }
+      }
+      await this.#exited(child);
+    })();
+    this.#stopPromise = stopping;
+    return stopping;
   }
 
   /**
@@ -327,7 +383,12 @@ export class PowerShellBackend {
    * not do is reported rather than assumed away. A worker that recorded nothing held (the
    * ordinary case) costs one `Test-Path` in the child process.
    */
-  async #releaseHeldInput() {
+  #releaseHeldInput() {
+    if (!this.#releasePromise) this.#releasePromise = this.#runReleaseHeldInput();
+    return this.#releasePromise;
+  }
+
+  async #runReleaseHeldInput() {
     if (this.#heldFilePath === '') return this.#lastRelease;
     if (!existsSync(this.#heldFilePath)) {
       // Nothing was recorded, so nothing is held: no process needed for the common case.
@@ -353,7 +414,7 @@ export class PowerShellBackend {
       try {
         child = spawn(this.#command, [
           '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-          '-File', RELEASE_SCRIPT, '-StateFile', this.#heldFilePath,
+          '-File', this.#releaseScriptPath, '-StateFile', this.#heldFilePath,
         ], { windowsHide: true });
       } catch (error) {
         finish({ ok: false, released: [], error: String(error?.message ?? error) });
@@ -402,15 +463,19 @@ export class PowerShellBackend {
         clearTimeout(timer);
         resolve();
       };
-      const timer = setTimeout(finish, 2_000);
+      const timer = setTimeout(finish, STOP_TIMEOUT_MS);
       timer.unref?.();
       child.once('exit', finish);
-      child.once('error', finish);
     });
-    this.#exitPromise = wait.finally(() => {
-      if (this.#exitPromise === wait) this.#exitPromise = null;
+    // `finally()` returns a *different* promise from `wait`; the field must hold that one and the
+    // cleanup must compare against the same one. It used to compare with `wait`, so the branch
+    // never matched, the settled promise stayed installed, and the next generation's stop reused
+    // it — `start()` then bound a request to a fresh worker while the killed one was still alive.
+    const settled = wait.finally(() => {
+      if (this.#exitPromise === settled) this.#exitPromise = null;
     });
-    return this.#exitPromise;
+    this.#exitPromise = settled;
+    return settled;
   }
 
   /** @deprecated use #stopChild; kept for the internal call sites' readability. */
@@ -601,8 +666,10 @@ export class PowerShellBackend {
           if (release.releaseError !== undefined) error.releaseError = String(release.releaseError);
         }
         this.#finish(entry, error);
-        // The next request waits for this process to be gone before it binds to an instance.
-        void this.#stopChild();
+        // This callback belongs to the generation that timed out. Its release may
+        // finish after that worker exited and a replacement became ready; never
+        // let the stale callback stop (or release input for) the healthy new one.
+        if (this.#child === child) void this.#stopChild(child);
       });
     }, entry.timeoutMs);
     try {
@@ -651,8 +718,7 @@ export class PowerShellBackend {
    * @param reason - text for the callers.
    * @returns how many requests it actually cancelled.
    */
-  cancelAll(reason = 'the capability was turned off') {
-    const entries = [...this.#queue, ...this.#pending.values()];
+  #cancelEntries(entries, reason) {
     let cancelled = 0;
     for (const entry of entries) {
       const settledBefore = entry.settledCaller;
@@ -660,6 +726,23 @@ export class PowerShellBackend {
       if (!settledBefore && entry.settledCaller) cancelled += 1;
     }
     return cancelled;
+  }
+
+  cancelAll(reason = 'the capability was turned off') {
+    return this.#cancelEntries([...this.#queue, ...this.#pending.values()], reason);
+  }
+
+  /**
+   * Cancel only requests owned by one host session. The worker process is shared, but a
+   * per-session mode change must not reject another session's read or release operation.
+   */
+  cancelSession(sessionKey, reason = 'the capability was turned off') {
+    if (typeof sessionKey !== 'string' || sessionKey.length === 0) {
+      throw new TypeError('cancelSession requires a non-empty normalized session key');
+    }
+    const entries = [...this.#queue, ...this.#pending.values()]
+      .filter((entry) => entry.sessionKey === sessionKey);
+    return this.#cancelEntries(entries, reason);
   }
 
   #touchCancelFile(id) {
@@ -705,6 +788,7 @@ export class PowerShellBackend {
       cmd,
       args,
       signal,
+      sessionKey: options.sessionKey ?? null,
       written: false,
       settledCaller: false,
       timer: null,

@@ -9,6 +9,7 @@
  * 不认识 ctx、不认识事件：谁在 agent 创建/销毁时调用它，由入口决定（那边才是装配）。
  */
 import { sessionKey } from './sessions.mjs';
+import { ALL_MANAGED_TOOL_NAMES, deniedToolsForMode, normalizeMode } from './modes.mjs';
 import { importHostModule, hostResolution, HOST_CODES } from './host-packages.mjs';
 
 /**
@@ -60,13 +61,7 @@ export function scopeResolution() {
  * `tools.get` 会把这份组合里不存在的名字过滤掉，所以这里可以列全。
  * 浏览器两个工具走同一道会话门（§14）：把浏览器交给模型，和把鼠标交给它是同一量级的步骤。
  */
-export const HIDEABLE_TOOL_NAMES = [
-  'computer_screenshot', 'computer_actions', 'computer_click', 'computer_drag',
-  'computer_scroll', 'computer_type', 'computer_key', 'computer_windows', 'computer_ui',
-  'computer_ui_action', 'computer_clipboard', 'computer_paste', 'computer_launch',
-  'computer_stop', 'computer_watch',
-  'browser_state', 'browser_actions',
-];
+export const HIDEABLE_TOOL_NAMES = ALL_MANAGED_TOOL_NAMES;
 
 /**
  * 摘掉一条限制。**这是本模块唯一正确的释放姿势**，所以它单独成函数、两个调用点共用。
@@ -88,17 +83,18 @@ function liftRestriction(disposable) {
 
 /**
  * @param options.enabled - 配置项 `hideToolSchemasWhenOff !== false`；false 表示保持"一直可见"。
- * @param options.isEnabled - `(sessionId) => boolean`，问这个会话的能力开着没有。
+ * @param options.isEnabled - 旧版 `(sessionId) => boolean`，true 等价于 control。
+ * @param options.getMode - `(sessionId) => 'disabled' | 'watch' | 'control'`，优先于 isEnabled。
  * @param options.logger - 可选的 ctx.logger。
  * @param options.onSessionDisposed - 会话销毁时的额外清理（浏览器通道那条）。
  * @param options.scopeOf - 覆盖宿主 `scopeOf` 的实现。生产环境不传（`undefined`），用模块加载时
  *   解析到的那份；传 `null` 表示**明确没有**解析器，用于逼出兼容分支；传函数则用它。测试靠这个
  *   开关，在不依赖真实宿主包解析结果的前提下钉住"第二个参数是 scope key"这条契约。
  */
-export function createSchemaVisibility({ enabled, isEnabled, logger, onSessionDisposed, scopeOf: scopeOfOption }) {
+export function createSchemaVisibility({ tools: toolsOption, enabled, isEnabled, getMode, logger, onSessionDisposed, scopeOf: scopeOfOption }) {
   /** 解析作用域 key 的实现：`undefined` 取宿主那份，`null` 表示没有，函数则原样使用。 */
   const resolveScope = scopeOfOption === undefined ? hostScopeOf : scopeOfOption;
-  /** sessionKey -> `agent.ctx.tools.restrict()` 返回的 disposable（**函数**，见 {@link release}）。 */
+  /** sessionKey -> 当前模式及 `agent.ctx.tools.restrict()` 返回的 disposable。 */
   const hidden = new Map();
   /** sessionKey -> 活着的 agent，好让芯片开关能触到正确的 scope。 */
   const liveAgents = new Map();
@@ -119,7 +115,7 @@ export function createSchemaVisibility({ enabled, isEnabled, logger, onSessionDi
    * @returns {@link HIDEABLE_TOOL_NAMES} 中在这里能解析到的那些。
    */
   function visibleOwnToolNames(agent) {
-    const tools = agent?.ctx?.tools;
+    const tools = toolsOption ?? agent?.ctx?.tools;
     if (tools === undefined || typeof tools.get !== 'function') return [];
     let scope = agent.ctx;
     if (typeof resolveScope === 'function') {
@@ -159,34 +155,50 @@ export function createSchemaVisibility({ enabled, isEnabled, logger, onSessionDi
     }
     if (!enabled) return 'advertised';
     const key = sessionKey(agent?.session?.id);
+    const sessionId = agent?.session?.id;
+    const mode = typeof getMode === 'function'
+      ? normalizeMode(getMode(sessionId))
+      : (isEnabled?.(sessionId) ? 'control' : 'disabled');
+    const denied = deniedToolsForMode(mode);
     const restricted = hidden.get(key);
-    if (isEnabled(agent?.session?.id)) {
-      if (restricted !== undefined) {
-        try {
-          liftRestriction(restricted);
-        } catch (error) {
-          logger?.warn?.('computer-use: releasing the tool restriction failed: %s', String(error));
-        }
-        hidden.delete(key);
-        state.set(key, 'visible');
-      }
-      return 'visible';
-    }
-    if (restricted !== undefined) return 'hidden';
-    const names = visibleOwnToolNames(agent);
-    if (names.length === 0) return 'visible';
-    try {
-      const disposable = agent.ctx.tools.restrict({ deny: names });
-      hidden.set(key, disposable);
-      state.set(key, 'hidden');
-      logger?.info?.('computer-use: session %s hides %d tool schema(s) while 电脑操作 is off', key, names.length);
-      return 'hidden';
-    } catch (error) {
-      // 没有带作用域的 tools 服务、或某个名字被它拒绝，都不该把能力本身弄坏：
-      // 工具保持"可见但被拒"。
-      logger?.warn?.('computer-use: could not hide tool schemas for %s: %s', key, String(error));
+
+    if (denied.length === 0) {
+      if (restricted !== undefined) return release(key) ? 'visible' : 'error';
       state.set(key, 'visible');
       return 'visible';
+    }
+    if (restricted?.mode === mode) return 'hidden';
+    // Install the replacement before lifting the old restriction. If restrict() fails,
+    // the previous deny remains active and the session is explicitly reported as degraded.
+    const visible = new Set(visibleOwnToolNames(agent));
+    let names = denied.filter((name) => visible.has(name) || restricted?.names?.includes(name));
+    // tools.get() is filtered by the previous restriction. Carry its denied names into
+    // the replacement before lifting it, or watch → disabled would re-expose control-only tools.
+    if (names.length === 0 && restricted !== undefined) names = [...denied];
+    if (names.length === 0) {
+      if (restricted !== undefined) return release(key) ? 'visible' : 'error';
+      state.set(key, 'visible');
+      return 'visible';
+    }
+    try {
+      const toolService = toolsOption ?? agent?.ctx?.tools;
+      const disposable = toolService.restrict({ deny: names });
+      hidden.set(key, { mode, names: [...names], disposable });
+      state.set(key, 'hidden');
+      if (restricted !== undefined) {
+        try { liftRestriction(restricted.disposable); } catch (error) {
+          // Over-denying is safer than exposing a schema after a failed mode transition.
+          logger?.warn?.('computer-use: releasing the previous tool restriction failed: %s', String(error));
+          state.set(key, 'error');
+          return 'error';
+        }
+      }
+      logger?.info?.('computer-use: session %s hides %d tool schema(s) in %s mode', key, names.length, mode);
+      return 'hidden';
+    } catch (error) {
+      logger?.warn?.('computer-use: could not hide tool schemas for %s: %s', key, String(error));
+      state.set(key, 'error');
+      return 'error';
     }
   }
 
@@ -208,7 +220,9 @@ export function createSchemaVisibility({ enabled, isEnabled, logger, onSessionDi
       const next = sync(agent);
       // 'hidden' 在这里理论上不可达（同一次调用里授权值已经是 true），真出现了也照样放行，
       // 所以第二次机会落在下面的 release 上，而不是停在"没找到 agent"的分支上。
-      if (next !== 'hidden') return next;
+      // In explicit three-mode operation, watch/disabled restrictions are authoritative.
+      // The legacy boolean activation path retains its fail-open recovery behavior below.
+      if (next !== 'hidden' || typeof getMode === 'function') return next;
     }
     release(key);
     return agent === undefined ? 'unbound' : enabled ? 'visible' : 'advertised';
@@ -240,12 +254,15 @@ export function createSchemaVisibility({ enabled, isEnabled, logger, onSessionDi
     const restricted = hidden.get(key);
     if (restricted === undefined) return;
     try {
-      liftRestriction(restricted);
+      liftRestriction(restricted.disposable);
     } catch (error) {
       logger?.warn?.('computer-use: releasing the tool restriction failed: %s', String(error));
+      state.set(key, 'error');
+      return false;
     }
     hidden.delete(key);
     state.set(key, 'visible');
+    return true;
   }
 
   /** agent 创建：记下它，并同步一次。 */
@@ -272,7 +289,7 @@ export function createSchemaVisibility({ enabled, isEnabled, logger, onSessionDi
 
   /** 控制块要的那一格：'hidden' / 'visible'（配置关掉时为 'advertised-by-config'）。 */
   function toolSchemaState(key) {
-    return enabled ? (hidden.has(key) ? 'hidden' : 'visible') : 'advertised-by-config';
+    return enabled ? (state.get(key) ?? (hidden.has(key) ? 'hidden' : 'visible')) : 'advertised-by-config';
   }
 
   return {

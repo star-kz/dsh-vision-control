@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { normalizeCaptureSpec, resolveFormat, screenshotEnvelope } from '../internal/capture.mjs';
 import { SCREENSHOT_VALUE_SCHEMA, captureTiming, shotValue } from '../internal/tool-contracts.mjs';
 export function registerComputerScreenshot(env) {
-  const { safeRegister, defineTracedTool, captureService, refs, requireGrant, call, capture, reportAttachment, actionTimeoutMs, ctx } = env;
+  const { safeRegister, defineTracedTool, captureService, refs, requireGrant, requireObservation = requireGrant, call, capture, reportAttachment, actionTimeoutMs, ctx } = env;
   safeRegister(defineTracedTool({
     name: 'computer_screenshot',
     description:
@@ -120,7 +120,7 @@ export function registerComputerScreenshot(env) {
     async execute(args, exec) {
       // Checked before the delay below, so a disabled capability never makes the
       // caller sit through a wait it was never going to be allowed to use.
-      requireGrant(exec);
+      requireObservation(exec);
       const delay = Math.min(30, Math.max(0, args.delay_seconds ?? 0));
       if (delay > 0) {
         await new Promise((resolve, reject) => {

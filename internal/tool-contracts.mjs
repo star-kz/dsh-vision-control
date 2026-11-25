@@ -1476,3 +1476,89 @@ export function renderState(value, compact = true) {
   ].filter((line) => line !== '');
   return `${head}\n${lines.join('\n')}\n${notes.join('\n')}${textTail}${ocrTail}`;
 }
+
+// Realtime public contracts deliberately live in this dependency-free module. The host can
+// therefore keep every legacy computer_* tool even when the optional RT runtime cannot load.
+const RT_GENERIC_OBJECT = { type: 'object', additionalProperties: true };
+const RT_GENERIC_RESULT = { anyOf: [{ type: 'object' }, { type: 'array' }, { type: 'string' }, { type: 'number' }, { type: 'boolean' }, { type: 'null' }] };
+const RT_PARAMETERS = (properties, required = []) => ({ type: 'object', additionalProperties: false, properties, required });
+const RT_OUTPUT = (properties) => ({
+  schema: { type: 'object', additionalProperties: false, properties },
+  render: (_args, value) => [{
+    type: 'text',
+    text: value?.degraded === true
+      ? `Realtime degraded [${value.code ?? 'RT_UNAVAILABLE'}]: ${value.message ?? 'Worker unavailable'}`
+      : JSON.stringify(value, null, 2),
+  }],
+});
+const RT_DEGRADED = {
+  degraded: { type: 'boolean', required: true },
+  code: { type: 'string' },
+  message: { type: 'string' },
+};
+const RT_RUN_PROPERTIES = {
+  ...RT_DEGRADED,
+  runId: { type: 'string' }, mode: { type: 'string' }, skill: { type: 'string' },
+  target: RT_GENERIC_OBJECT, sessionId: { type: 'string' }, createdAtMs: { type: 'number' },
+  state: { type: 'string' }, dispatched: { type: 'boolean' }, lease: RT_GENERIC_OBJECT,
+  deadline: {}, sourceEpochMax: {}, eventSeqMax: {}, lastEventAtMs: {}, lastHeartbeatAckAtMs: {},
+  nativeTerminal: RT_GENERIC_OBJECT, heartbeatError: RT_GENERIC_OBJECT,
+  stop: {}, autoRelease: {}, error: {},
+};
+const RT_RUN_ID = { runId: { type: 'string' } };
+const RT_TARGET = { target: RT_GENERIC_OBJECT };
+const RT_SKILL = { skill: { type: 'string' } };
+
+/** Exactly the nine names frozen by realtime/contracts.mjs; no event/frame synonym tools. */
+export const REALTIME_TOOL_CONTRACTS = {
+  realtime_targets: {
+    parameters: RT_PARAMETERS({ refresh: { type: 'boolean' } }),
+    output: RT_OUTPUT({ ...RT_DEGRADED, targets: { type: 'array', items: RT_GENERIC_OBJECT } }),
+  },
+  realtime_skill_validate: {
+    parameters: RT_PARAMETERS({ ...RT_SKILL, ...RT_TARGET }, ['skill']),
+    output: RT_OUTPUT({ ...RT_DEGRADED, result: RT_GENERIC_RESULT }),
+  },
+  realtime_calibrate: {
+    parameters: RT_PARAMETERS({ ...RT_TARGET, ...RT_SKILL, options: RT_GENERIC_OBJECT }, ['target']),
+    output: RT_OUTPUT({ ...RT_DEGRADED, result: RT_GENERIC_RESULT }),
+  },
+  realtime_run: {
+    parameters: RT_PARAMETERS({
+      ...RT_SKILL, ...RT_TARGET,
+      mode: { type: 'string', enum: ['shadow', 'active'] },
+      deadlineMs: { type: 'integer', minimum: 1, maximum: 86_400_000 },
+      authorization: RT_GENERIC_OBJECT,
+      timeoutMs: { type: 'integer', minimum: 1 },
+    }, ['skill', 'target']),
+    output: RT_OUTPUT(RT_RUN_PROPERTIES),
+  },
+  realtime_status: {
+    parameters: RT_PARAMETERS(RT_RUN_ID, ['runId']),
+    output: RT_OUTPUT({ ...RT_DEGRADED, runId: { type: 'string' }, record: {}, live: {}, liveError: {}, nativeTerminal: RT_GENERIC_OBJECT }),
+  },
+  realtime_stop: {
+    parameters: RT_PARAMETERS(RT_RUN_ID, ['runId']),
+    output: RT_OUTPUT({
+      ...RT_DEGRADED, runId: { type: 'string' }, stopped: { type: 'boolean' },
+      requestedAtMs: { type: 'number' }, estopSent: { type: 'boolean' }, estopAcked: { type: 'boolean' },
+      leaseRevoked: { type: 'boolean' }, releaseConfirmed: { type: 'boolean' }, released: { type: 'boolean' },
+      releaseError: {}, releaseToolUsed: { type: 'boolean' }, state: {}, duplicate: { type: 'boolean' },
+      detail: {}, estopError: {}, workerReleased: { type: 'boolean' },
+    }),
+  },
+  realtime_snapshot: {
+    parameters: RT_PARAMETERS(RT_RUN_ID, ['runId']),
+    output: RT_OUTPUT({ ...RT_DEGRADED, runId: { type: 'string' }, snapshot: RT_GENERIC_OBJECT }),
+  },
+  realtime_replay: {
+    parameters: RT_PARAMETERS({ tracePath: { type: 'string' }, mode: { type: 'string', enum: ['replay'] } }, ['tracePath']),
+    output: RT_OUTPUT({ ...RT_DEGRADED, runId: { type: 'string' }, mode: { type: 'string' }, result: RT_GENERIC_OBJECT }),
+  },
+  realtime_trace_read: {
+    parameters: RT_PARAMETERS({
+      tracePath: { type: 'string' }, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1 },
+    }, ['tracePath']),
+    output: RT_OUTPUT({ ...RT_DEGRADED, result: RT_GENERIC_RESULT }),
+  },
+};

@@ -26,9 +26,20 @@ window.__ModuleLoader__.load({
       ? reactModule
       : reactModule?.default;
 
+    const reactDomModule = require('react-dom');
+    const ReactDOM = reactDomModule !== null && typeof reactDomModule === 'object' && typeof reactDomModule.createPortal === 'function'
+      ? reactDomModule
+      : reactDomModule?.default;
+
     const CSS_ID = 'dsh-computer-use-style';
     const ROUTE = '/computer-use';
     const LABEL = '电脑操作';
+    const MODE_ORDER = ['disabled', 'watch', 'control'];
+    const MODE_DETAILS = {
+      disabled: { label: '禁用功能' },
+      watch: { label: '仅观看' },
+      control: { label: '观看+操作' },
+    };
 
     /**
      * 优-P0-01 授权面三件套的头件：宿主 `admitStateRequest` 要求每个 /computer-use/*
@@ -170,6 +181,107 @@ window.__ModuleLoader__.load({
   background: var(--dsw-alias-state-error-primary, currentColor);
   opacity: 1;
 }
+.dsh-cu-root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dsh-cu-chip {
+  min-width: 26px;
+  justify-content: center;
+  gap: 0;
+  padding: 0 5px;
+}
+.dsh-cu-mode-icon {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+}
+.dsh-cu-menu {
+  position: fixed;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: 138px;
+  padding: 4px;
+  border: 1px solid var(--dsw-alias-label-tertiary);
+  border-radius: var(--dsw-radius-md, 6px);
+  background: var(--dsw-alias-bg-elevated, var(--dsw-alias-interactive-bg-hover));
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+  font-family: var(--dsw-font-family);
+}
+.dsh-cu-mode-item {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 4px);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: var(--dsw-font-xs-13, 13px);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dsh-cu-mode-item:hover,
+.dsh-cu-mode-item[aria-checked="true"] {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.dsh-cu-mode-item[aria-checked="true"] {
+  color: var(--dsw-alias-brand-primary);
+}
+.dsh-cu-mode-item:focus-visible,
+.dsh-cu-watch-stop:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color);
+  outline-offset: -1px;
+}
+.dsh-cu-watch-stop {
+  box-sizing: border-box;
+  min-height: 24px;
+  padding: 0 7px;
+  border: 1px solid var(--dsw-alias-label-tertiary);
+  border-radius: var(--dsw-radius-md, 6px);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--dsw-font-family);
+  font-size: var(--dsw-font-xs-13, 13px);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dsh-cu-watch-stop:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+.dsh-cu-watch-stop:disabled {
+  opacity: .55;
+  cursor: default;
+}
+.dsh-cu-error {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 1001;
+  width: max-content;
+  max-width: 280px;
+  padding: 6px 8px;
+  border-radius: var(--dsw-radius-md, 6px);
+  background: var(--dsw-alias-bg-elevated, var(--dsw-alias-interactive-bg-hover));
+  color: var(--dsw-alias-state-error-primary);
+  font-family: var(--dsw-font-family);
+  font-size: var(--dsw-font-xs-13, 13px);
+  line-height: 1.4;
+  white-space: normal;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 16%);
+}
 @keyframes dsh-cu-pulse {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.35); opacity: .6; }
@@ -183,25 +295,46 @@ window.__ModuleLoader__.load({
 }
 `;
 
-    /** The monitor glyph the reference design shows beside the label. */
-    function MonitorIcon() {
+    /**
+     * One consistent 24-pixel line-icon family for all three permission modes.
+     * These are vectors, not platform-dependent emoji; currentColor follows the DSH theme.
+     */
+    function ModeIcon({ mode }) {
+      const shapes = mode === 'watch'
+        ? [
+            React.createElement('path', { key: 'eye', d: 'M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z' }),
+            React.createElement('circle', { key: 'pupil', cx: 12, cy: 12, r: 2.8 }),
+          ]
+        : mode === 'unknown'
+          ? [
+              React.createElement('rect', { key: 'screen', x: 3, y: 4, width: 18, height: 12, rx: 2 }),
+              React.createElement('path', { key: 'stand', d: 'M8 20h8M12 16v4' }),
+              React.createElement('path', { key: 'question', d: 'M9.3 8.5a2.7 2.7 0 0 1 5.2 1c0 1.8-2.5 2-2.5 3.5M12 14.5h.01' }),
+            ]
+          : [
+              React.createElement('rect', { key: 'screen', x: 3, y: 4, width: 18, height: 12, rx: 2 }),
+              React.createElement('path', { key: 'stand', d: 'M8 20h8M12 16v4' }),
+              mode === 'disabled'
+                ? React.createElement('path', { key: 'slash', d: 'M4 4l16 16' })
+                : React.createElement('path', { key: 'pointer', d: 'M13 8.5 18.5 14l-3 .5 2 3-2 1-2-3-2 2Z' }),
+            ];
       return React.createElement(
         'svg',
         {
-          viewBox: '0 0 16 16',
-          width: 14,
-          height: 14,
+          className: `dsh-cu-mode-icon dsh-cu-mode-icon-${mode}`,
+          'data-icon': mode,
+          viewBox: '0 0 24 24',
+          width: 16,
+          height: 16,
           fill: 'none',
           stroke: 'currentColor',
-          strokeWidth: 1.1,
+          strokeWidth: 1.8,
           strokeLinecap: 'round',
           strokeLinejoin: 'round',
           'aria-hidden': true,
           focusable: false,
         },
-        React.createElement('rect', { key: 'screen', x: 1.7, y: 2.7, width: 12.6, height: 8.6, rx: 1.5 }),
-        React.createElement('path', { key: 'stand', d: 'M8 11.3v2.4' }),
-        React.createElement('path', { key: 'base', d: 'M5.4 13.7h5.2' }),
+        shapes,
       );
     }
 
@@ -214,7 +347,10 @@ window.__ModuleLoader__.load({
      * @param payload - the host's JSON reply.
      * @returns the status object the chip renders from.
      */
-    function statusFrom(payload) {
+    function statusFrom(payload, switchFailure = '') {
+      const mode = MODE_ORDER.includes(payload.mode)
+        ? payload.mode
+        : payload.enabled === true ? 'control' : 'disabled';
       const control = payload.control ?? {};
       const lastAction = control.lastAction ?? null;
       // 优-P0-14：宿主 controlState 里的原始盯屏块。宿主可能已把 control.state 折成
@@ -222,7 +358,8 @@ window.__ModuleLoader__.load({
       const watch = control.watch ?? null;
       return {
         phase: 'ready',
-        enabled: payload.enabled === true,
+        mode,
+        enabled: mode !== 'disabled',
         supported: payload.supported !== false,
         note: payload.reason ?? '',
         control: typeof control.state === 'string' ? control.state : '',
@@ -237,7 +374,8 @@ window.__ModuleLoader__.load({
         // Whether the *last switch attempt* failed. Kept separate from `phase` because the two
         // questions are different: "what position is the capability in" can be answered again by
         // a read, while "your click did not take" stays true until the next successful switch.
-        switchFailed: false,
+        switchFailed: switchFailure !== '',
+        ...(switchFailure !== '' ? { note: switchFailure } : {}),
       };
     }
 
@@ -248,20 +386,23 @@ window.__ModuleLoader__.load({
      * and it must not be reported as a generic error. The status code rides on the error object
      * so a server that answers 404 with a JSON body still lands here.
      */
-    function failedStatus(error) {
+    function failedStatus(error, previous = {}) {
       const unmounted = error?.status === 404 || error?.message === 'HTTP 404';
+      const confirmed = MODE_ORDER.includes(previous.mode);
       return {
         phase: unmounted ? 'unmounted' : 'error',
-        enabled: false,
-        supported: true,
-        control: '',
-        controlDetail: '',
-        controlOwner: '',
-        inFlight: 0,
-        watchAlive: false,
-        watchSeconds: 0,
-        watchSource: '',
-        switchFailed: false,
+        mode: confirmed ? previous.mode : null,
+        confirmed,
+        enabled: confirmed && previous.enabled === true,
+        supported: previous.supported !== false,
+        control: typeof previous.control === 'string' ? previous.control : '',
+        controlDetail: typeof previous.controlDetail === 'string' ? previous.controlDetail : '',
+        controlOwner: typeof previous.controlOwner === 'string' ? previous.controlOwner : '',
+        inFlight: Number.isFinite(previous.inFlight) ? previous.inFlight : 0,
+        watchAlive: previous.watchAlive === true,
+        watchSeconds: Number.isFinite(previous.watchSeconds) ? previous.watchSeconds : 0,
+        watchSource: typeof previous.watchSource === 'string' ? previous.watchSource : '',
+        switchFailed: previous.switchFailed === true,
         note: unmounted
           ? '主机半未加载：/computer-use/state 返回 404'
           : String(error?.message ?? error),
@@ -333,7 +474,9 @@ window.__ModuleLoader__.load({
       const payload = await readJson(response);
       if (!response.ok) throw replyFailure(response, payload, `HTTP ${response.status}`);
       if (payload?.ok === false) throw replyFailure(response, payload, 'the host refused the read');
-      if (typeof payload?.enabled !== 'boolean') throw new Error('the host did not report an enabled flag');
+      if (!MODE_ORDER.includes(payload?.mode) && typeof payload?.enabled !== 'boolean') {
+        throw new Error('the host did not report a valid mode or legacy enabled flag');
+      }
       return payload;
     }
 
@@ -347,16 +490,18 @@ window.__ModuleLoader__.load({
      * @param enabled - the target value.
      * @returns the host's payload.
      */
-    async function requestToggle(sessionId, enabled) {
+    async function requestMode(sessionId, mode) {
       const response = await fetch(`${ROUTE}/state`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...ADMISSION_HEADER },
-        body: JSON.stringify({ sessionId, enabled }),
+        body: JSON.stringify({ sessionId, mode }),
       });
       const payload = await readJson(response);
       if (!response.ok) throw replyFailure(response, payload, `HTTP ${response.status}`);
       if (payload?.ok === false) throw replyFailure(response, payload, 'the host refused the switch');
-      if (typeof payload?.enabled !== 'boolean') throw new Error('the host did not report an enabled flag');
+      if (!MODE_ORDER.includes(payload?.mode) && typeof payload?.enabled !== 'boolean') {
+        throw new Error('the host did not report a valid mode or legacy enabled flag');
+      }
       return payload;
     }
 
@@ -377,7 +522,9 @@ window.__ModuleLoader__.load({
       const payload = await readJson(response);
       if (!response.ok) throw replyFailure(response, payload, `HTTP ${response.status}`);
       if (payload?.ok === false) throw replyFailure(response, payload, 'the host refused to stop watching');
-      if (typeof payload?.enabled !== 'boolean') throw new Error('the host did not report an enabled flag');
+      if (!MODE_ORDER.includes(payload?.mode) && typeof payload?.enabled !== 'boolean') {
+        throw new Error('the host did not report a valid mode or legacy enabled flag');
+      }
       return payload;
     }
 
@@ -400,8 +547,17 @@ window.__ModuleLoader__.load({
      */
     function ComputerUseChip(props) {
       const sessionId = props?.sessionId;
-      const [status, setStatus] = React.useState({ phase: 'loading', enabled: false, supported: true, note: '', control: '', controlDetail: '', controlOwner: '', inFlight: 0, watchAlive: false, watchSeconds: 0, watchSource: '', switchFailed: false });
-      const current = React.useRef({ mounted: false, epoch: 0, readId: 0, toggling: false, read: null });
+      const [status, setStatus] = React.useState({ phase: 'loading', mode: null, enabled: false, supported: true, note: '', control: '', controlDetail: '', controlOwner: '', inFlight: 0, watchAlive: false, watchSeconds: 0, watchSource: '', switchFailed: false });
+      const current = React.useRef({ mounted: false, epoch: 0, readId: 0, mutationId: 0, toggling: false, read: null });
+      const [menuOpen, setMenuOpen] = React.useState(false);
+      const [activeMode, setActiveMode] = React.useState('disabled');
+      const [menuPosition, setMenuPosition] = React.useState({ top: 8, left: 8 });
+      const rootRef = React.useRef(null);
+      const triggerRef = React.useRef(null);
+      const menuRef = React.useRef(null);
+      const itemRefs = React.useRef([]);
+      const restoreFocusRef = React.useRef(false);
+      const switchFailureRef = React.useRef('');
 
       // 优-P0-14 盯屏折叠：宿主可能已把 control.state 折成 'watching'，也可能只给
       // control.watch 原始块；无论哪种，「watch 会话存活且非 busy/stopping」时芯片
@@ -446,11 +602,8 @@ window.__ModuleLoader__.load({
           .then((payload) => {
             settle();
             if (!accepted()) return undefined;
-            const next = statusFrom(payload);
-            if (options.switchFailure !== undefined) {
-              next.switchFailed = true;
-              next.note = options.switchFailure;
-            }
+            if (options.switchFailure !== undefined) switchFailureRef.current = String(options.switchFailure);
+            const next = statusFrom(payload, switchFailureRef.current);
             setStatus(next);
             return next;
           })
@@ -459,14 +612,102 @@ window.__ModuleLoader__.load({
             if (error?.name === 'AbortError') return undefined;
             if (!accepted()) return undefined;
             console.warn('[computer-use] could not read the capability state:', error);
-            // The confirming read failed as well: the failure it was confirming is still the most
-            // useful thing on screen, so leave it there rather than swapping in this message.
-            if (options.switchFailure !== undefined) return undefined;
-            const next = failedStatus(error);
-            setStatus(next);
+            if (options.switchFailure !== undefined) switchFailureRef.current = String(options.switchFailure);
+            const warning = switchFailureRef.current;
+            let next;
+            setStatus((previous) => {
+              const failure = failedStatus(error, previous);
+              next = warning === '' ? failure : { ...failure, note: warning, switchFailed: true };
+              return next;
+            });
             return next;
           });
       }, [sessionId]);
+
+      const closeMenu = React.useCallback((restoreFocus = true) => {
+        restoreFocusRef.current = restoreFocus;
+        setMenuOpen(false);
+      }, []);
+
+      const updateMenuPosition = React.useCallback(() => {
+        const rect = triggerRef.current?.getBoundingClientRect?.();
+        if (!rect) return;
+        const menuWidth = 156;
+        const menuHeight = 112;
+        const margin = 8;
+        const viewportWidth = window.innerWidth || document.documentElement?.clientWidth || 1280;
+        const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 800;
+        const left = Math.max(margin, Math.min(rect.right - menuWidth, viewportWidth - menuWidth - margin));
+        let top = rect.top - menuHeight - 6;
+        if (top < margin) top = Math.min(rect.bottom + 6, viewportHeight - menuHeight - margin);
+        const next = { top: Math.max(margin, top), left };
+        setMenuPosition((previous) => previous.top === next.top && previous.left === next.left ? previous : next);
+      }, []);
+
+      const openMenu = React.useCallback(() => {
+        const ref = current.current;
+        if (!ref.mounted || ref.toggling || status.supported === false || status.phase === 'loading'
+          || status.phase === 'busy' || controlState === 'stopping') return;
+        // Preserve the old recovery path: a missing host half is retried, not presented as a
+        // menu whose choices could not possibly succeed.
+        if (status.phase === 'unmounted') {
+          setStatus((previous) => ({ ...previous, phase: 'loading' }));
+          void readState();
+          return;
+        }
+        updateMenuPosition();
+        setActiveMode(MODE_ORDER.includes(status.mode) ? status.mode : status.enabled ? 'control' : 'disabled');
+        setMenuOpen(true);
+      }, [status.mode, status.enabled, status.supported, status.phase, controlState, readState, updateMenuPosition]);
+
+      // Focus after the closed/open render, when refs point at the current DOM elements.
+      React.useEffect(() => {
+        if (!menuOpen) {
+          if (restoreFocusRef.current) {
+            restoreFocusRef.current = false;
+            triggerRef.current?.focus?.();
+          }
+          return;
+        }
+        restoreFocusRef.current = false;
+        const index = Math.max(0, MODE_ORDER.indexOf(activeMode));
+        itemRefs.current[index]?.focus?.();
+      }, [menuOpen, activeMode]);
+
+      // A root contains both the trigger and its absolutely-positioned menu. Pointer-down is used
+      // so the menu closes before an outside control consumes the click; Escape works from either
+      // the trigger or an item. Both listeners are removed as soon as the menu closes/unmounts.
+      React.useEffect(() => {
+        if (!menuOpen || typeof document === 'undefined') return undefined;
+        const onPointerDown = (event) => {
+          if (!rootRef.current?.contains?.(event.target) && !menuRef.current?.contains?.(event.target)) closeMenu(true);
+        };
+        const onKeyDown = (event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            closeMenu(true);
+          }
+        };
+        document.addEventListener('pointerdown', onPointerDown);
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+          document.removeEventListener('pointerdown', onPointerDown);
+          document.removeEventListener('keydown', onKeyDown);
+        };
+      }, [menuOpen, closeMenu]);
+
+      // The menu is portalled to document.body, so it is a real overlay rather than
+      // composer content. Keep its fixed anchor correct on viewport and scroll changes.
+      React.useEffect(() => {
+        if (!menuOpen) return undefined;
+        updateMenuPosition();
+        window.addEventListener('resize', updateMenuPosition);
+        window.addEventListener('scroll', updateMenuPosition, true);
+        return () => {
+          window.removeEventListener('resize', updateMenuPosition);
+          window.removeEventListener('scroll', updateMenuPosition, true);
+        };
+      }, [menuOpen, updateMenuPosition]);
 
       // Session identity owns the request lifecycle. Changing Session is not a re-read of the same
       // chip: it invalidates every reply still on the wire, drops any in-flight switch, and shows
@@ -478,10 +719,14 @@ window.__ModuleLoader__.load({
         ref.mounted = true;
         ref.epoch += 1;
         ref.readId += 1;
+        ref.mutationId += 1;
         ref.toggling = false;
         ref.read?.abort();
         ref.read = null;
-        setStatus({ phase: 'loading', enabled: false, supported: true, note: '', control: '', controlDetail: '', controlOwner: '', inFlight: 0, watchAlive: false, watchSeconds: 0, watchSource: '', switchFailed: false });
+        switchFailureRef.current = '';
+        setMenuOpen(false);
+        setActiveMode('disabled');
+        setStatus({ phase: 'loading', mode: null, enabled: false, supported: true, note: '', control: '', controlDetail: '', controlOwner: '', inFlight: 0, watchAlive: false, watchSeconds: 0, watchSource: '', switchFailed: false });
         void readState();
         return () => {
           ref.mounted = false;
@@ -514,6 +759,7 @@ window.__ModuleLoader__.load({
 
         const arm = (ms) => {
           if (stopped) return;
+          if (timer !== null) clearTimeout(timer);
           timer = setTimeout(tick, ms);
         };
         const tick = () => {
@@ -563,53 +809,48 @@ window.__ModuleLoader__.load({
        *     is — a lost response does not mean the server did not act, so it must not "restore"
        *     the old value by guessing.
        */
-      const toggle = React.useCallback(() => {
+      const selectMode = React.useCallback((mode) => {
         const ref = current.current;
-        if (sessionId === undefined || sessionId === null || !ref.mounted) return;
-
-        // A chip whose host half never mounted has nothing to toggle. Re-reading the state is the
-        // only useful move: it recovers on its own if the host half came up since, and it keeps
-        // the failure visible instead of pretending to switch.
-        if (status.phase === 'unmounted') {
-          setStatus((previous) => ({ ...previous, phase: 'loading' }));
-          void readState();
-          return;
-        }
-        if (status.supported === false) return;
-        if (ref.toggling) return;
-        if (status.phase === 'loading') return;
-        // 优-P0-14：停止排水期间禁止再提交——撤销正在落地，再一次翻转只会和它在半路相撞。
-        if (controlState === 'stopping') return;
+        closeMenu(true);
+        if (sessionId === undefined || sessionId === null || !ref.mounted || !MODE_ORDER.includes(mode)) return;
+        if (status.supported === false || ref.toggling || status.phase === 'loading'
+          || status.phase === 'busy' || controlState === 'stopping') return;
+        // Choosing the already-confirmed radio is a no-op, not a needless host mutation.
+        if (mode === status.mode) return;
         ref.toggling = true;
+        const epoch = ref.epoch;
+        const mutationId = ++ref.mutationId;
+        const accepted = () => ref.mounted && ref.epoch === epoch && ref.mutationId === mutationId;
 
-        const next = !status.enabled;
+        // Invalidate the previous GET before the POST. Even an abort that loses the wire race
+        // cannot pass readState's sequence check and overwrite this mutation's authoritative reply.
         ref.readId += 1;
         ref.read?.abort();
         ref.read = null;
-        // Keep the last *confirmed* position and clear the previous failure: what the user is
-        // looking at now is "a switch is in flight", not the outcome of the last one.
+        // Keep the old mode visible until the server confirms the requested one.
         setStatus((previous) => ({ ...previous, phase: 'busy', note: '', switchFailed: false }));
 
-        requestToggle(sessionId, next)
+        requestMode(sessionId, mode)
           .then((payload) => {
-            if (!ref.mounted) return;
+            if (!accepted()) return;
+            switchFailureRef.current = '';
             setStatus(statusFrom(payload));
           })
           .catch((error) => {
-            console.error('[computer-use] could not change the capability state:', error);
-            if (!ref.mounted) return;
+            if (!accepted()) return;
+            console.error('[computer-use] could not change the capability mode:', error);
             const note = String(error?.message ?? error);
+            switchFailureRef.current = note;
             setStatus((previous) => ({ ...previous, phase: 'error', note, switchFailed: true }));
-            // Let the confirming read through, then ask the host what actually happened: a lost
-            // response does not mean the server did not act, so the chip must not guess the old
-            // value back. If that read fails too, the failure above stays on screen.
+            // A lost reply is not proof that the host did nothing. Confirm its actual state while
+            // retaining the visible failure instead of guessing the target or old mode.
             ref.toggling = false;
             void readState({ switchFailure: note });
           })
           .finally(() => {
-            ref.toggling = false;
+            if (ref.mutationId === mutationId) ref.toggling = false;
           });
-      }, [sessionId, status.enabled, status.phase, status.supported, controlState, readState]);
+      }, [sessionId, status.mode, status.phase, status.supported, controlState, readState, closeMenu]);
 
       /**
        * Stop the watch session, leaving the capability on (优-P0-14).
@@ -626,7 +867,11 @@ window.__ModuleLoader__.load({
         if (ref.toggling) return;
         if (status.phase === 'loading') return;
         if (controlState === 'stopping') return;
+        closeMenu(true);
         ref.toggling = true;
+        const epoch = ref.epoch;
+        const mutationId = ++ref.mutationId;
+        const accepted = () => ref.mounted && ref.epoch === epoch && ref.mutationId === mutationId;
 
         ref.readId += 1;
         ref.read?.abort();
@@ -634,22 +879,25 @@ window.__ModuleLoader__.load({
 
         requestWatchStop(sessionId)
           .then((payload) => {
-            if (!ref.mounted) return;
+            if (!accepted()) return;
+            switchFailureRef.current = '';
             setStatus(statusFrom(payload));
           })
           .catch((error) => {
+            if (!accepted()) return;
             console.error('[computer-use] could not stop the watch session:', error);
-            if (!ref.mounted) return;
             const note = `停止盯屏没有成功：${String(error?.message ?? error)}`;
+            switchFailureRef.current = note;
+            setStatus((previous) => ({ ...previous, phase: 'error', note, switchFailed: true }));
             // Let the confirming read through, then ask the host what actually happened —
             // same discipline as a failed switch: never guess the old value back.
             ref.toggling = false;
             void readState({ switchFailure: note });
           })
           .finally(() => {
-            ref.toggling = false;
+            if (ref.mutationId === mutationId) ref.toggling = false;
           });
-      }, [sessionId, status.supported, status.phase, controlState, readState]);
+      }, [sessionId, status.supported, status.phase, controlState, readState, closeMenu]);
 
 
       if (sessionId === undefined || sessionId === null) return null;
@@ -675,11 +923,17 @@ window.__ModuleLoader__.load({
       // "Your click did not take" and "the position is X" are two facts, and the chip can hold
       // both: a confirming read may re-establish the position, but it must not erase the failure.
       const switchFailed = status.switchFailed === true;
-      const position = status.enabled ? '已开启' : '已关闭';
+      const position = MODE_DETAILS[status.mode]?.label ?? '禁用功能';
       const title = unsupported
         ? `${LABEL}：当前平台不支持。${status.note}`
         : status.phase === 'unmounted'
-          ? `${LABEL}：主机半没有加载，所以点击不会有反应（${status.note}）。请完全退出 DSH 再重新打开——桌面端的 profile 只在启动时组合一次；若重启后仍是这个状态，控制台里的 [computer-use] 日志会写出激活失败的原因。`
+          ? status.confirmed === true
+            ? `${LABEL}：主机半未加载（${status.note}），当前无法读回状态。图标仍是最后一次确认过的模式「${position}」。请完全退出 DSH 再重新打开；若重启后仍无法读取，控制台里的 [computer-use] 日志会写出激活失败的原因。`
+            : `${LABEL}：未能确认状态，尚未确认模式；主机半没有加载（${status.note}）。请完全退出 DSH 再重新打开；若重启后仍是这个状态，控制台里的 [computer-use] 日志会写出激活失败的原因。`
+          : status.phase === 'error' && status.confirmed === false
+            ? switchFailed
+              ? `${LABEL}：这次切换没有成功（${status.note}），随后也没能读回状态；此前从未确认过这个 Session 的模式。点击可以重试。`
+              : `${LABEL}：未能确认状态（${status.note}）。这个 Session 尚未确认过模式，因此不会把它误显示为禁用；点击可以重试。`
           : switchFailed && status.phase === 'error'
             // The switch failed *and* nothing could be read back, so the position on screen is
             // the last one ever confirmed — not a fresh report. Say both, because "the switch did
@@ -690,38 +944,129 @@ window.__ModuleLoader__.load({
               : status.phase === 'error'
                 ? `${LABEL}：未能确认状态（${status.note}）。芯片上显示的仍是最后一次确认过的状态，点击可以重试。`
                 : watching
-                  ? `${LABEL}${controlSuffix}：屏幕正在被实时采集${watchSourceText === '' ? '' : `（${watchSourceText}）`}。点击停止盯屏——授权保持开启；想关闭授权，停止之后再点一次。`
-                  : status.enabled
-                    ? `${LABEL}${controlSuffix}：已开启。模型可以截屏、移动鼠标、点击和输入。点击关闭。`
-                    : `${LABEL}：已关闭。点击后模型可以在本会话操作这台电脑（截屏、鼠标、键盘、窗口与 UI 自动化）。`;
+                  ? `${LABEL}${controlSuffix}：屏幕正在被实时采集${watchSourceText === '' ? '' : `（${watchSourceText}）`}。可用旁边的“停止盯屏”按钮结束采集；点击模式图标可切换权限。`
+                  : status.mode === 'control'
+                    ? `${LABEL}${controlSuffix}：观看+操作。模型可以截屏、移动鼠标、点击和输入；点击可切换模式。`
+                    : status.mode === 'watch'
+                      ? `${LABEL}${controlSuffix}：仅观看。模型只能使用只读观察、影子运行和回放，不能写入鼠标键盘或启动 active 操控；点击可切换模式。`
+                      : `${LABEL}：已禁用。模型不会看到电脑工具或相关提示，直接调用也会被拒绝；点击可选择其他模式。`;
 
-      return React.createElement(
+      const stopping = effectiveControl === 'stopping';
+      const mode = MODE_ORDER.includes(status.mode)
+        ? status.mode
+        : status.enabled === true ? 'control' : status.phase === 'ready' ? 'disabled' : 'unknown';
+      const modeDetails = MODE_DETAILS[mode] ?? { label: status.phase === 'loading' ? '正在读取模式' : '未能确认状态' };
+      const triggerLabel = stopping
+        ? `${LABEL}（${modeDetails.label}、停止中）`
+        : unsupported
+          ? `${LABEL}（当前平台不支持）`
+          : status.phase === 'unmounted'
+            ? status.confirmed === true
+              ? `${LABEL}（${modeDetails.label}，状态读取失败）`
+              : `${LABEL}（未能确认状态）`
+            : `${LABEL}（${modeDetails.label}）`;
+      const triggerTitle = stopping ? `${LABEL}：停止中，请等待撤销完成。` : title;
+
+      const onTriggerKeyDown = (event) => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        openMenu();
+      };
+      const onMenuKeyDown = (event) => {
+        const index = Math.max(0, MODE_ORDER.indexOf(activeMode));
+        let nextIndex;
+        if (event.key === 'ArrowDown') nextIndex = (index + 1) % MODE_ORDER.length;
+        else if (event.key === 'ArrowUp') nextIndex = (index + MODE_ORDER.length - 1) % MODE_ORDER.length;
+        else if (event.key === 'Home') nextIndex = 0;
+        else if (event.key === 'End') nextIndex = MODE_ORDER.length - 1;
+        if (nextIndex !== undefined) {
+          event.preventDefault();
+          event.stopPropagation();
+          setActiveMode(MODE_ORDER[nextIndex]);
+          return;
+        }
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          event.stopPropagation();
+          selectMode(activeMode);
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          closeMenu(true);
+        } else if (event.key === 'Tab') {
+          closeMenu(false);
+        }
+      };
+
+      const trigger = React.createElement(
         'button',
         {
+          key: 'trigger',
+          ref: triggerRef,
           type: 'button',
           className: 'dsh-cu-chip',
           'data-state': dataState,
+          'data-mode': mode,
           'data-control': effectiveControl,
-          // Present only while the last switch attempt failed, so the dot can say so even when the
-          // position itself is confirmed and the chip is otherwise rendering as on/off.
           'data-warning': switchFailed ? 'switch' : undefined,
-          'aria-pressed': status.enabled === true,
-          'aria-label': unsupported
-            ? `${LABEL}（当前平台不支持）`
-            : status.phase === 'unmounted'
-              ? `${LABEL}（主机半未加载）`
-              : switchFailed
-                ? `${LABEL}（切换失败，当前${position}）`
-                : watching
-                  ? `${LABEL}（盯屏中，点击停止盯屏）`
-                  : `${LABEL}${status.enabled ? `（已开启${controlSuffix === '' ? '' : controlSuffix.slice(1, -1)}）` : '（已关闭）'}`,
-          title,
-          disabled: unsupported || status.phase === 'loading' || status.phase === 'busy' || effectiveControl === 'stopping',
-          onClick: watching ? stopWatch : toggle,
+          'aria-haspopup': 'menu',
+          'aria-expanded': menuOpen,
+          'aria-label': triggerLabel,
+          title: triggerTitle,
+          disabled: unsupported || status.phase === 'loading' || status.phase === 'busy' || stopping,
+          onClick: () => { if (menuOpen) closeMenu(true); else openMenu(); },
+          onKeyDown: onTriggerKeyDown,
         },
-        React.createElement(MonitorIcon, { key: 'icon' }),
-        React.createElement('span', { className: 'dsh-cu-dot', key: 'dot' }),
+        React.createElement(ModeIcon, { mode }),
       );
+      const menu = menuOpen && !stopping ? React.createElement(
+        'div',
+        {
+          key: 'menu', ref: menuRef, className: 'dsh-cu-menu', role: 'menu',
+          'aria-label': '电脑操作模式', 'data-overlay': 'computer-use-mode',
+          style: { top: `${menuPosition.top}px`, left: `${menuPosition.left}px` },
+          onKeyDown: onMenuKeyDown,
+        },
+        MODE_ORDER.map((itemMode, index) => {
+          const details = MODE_DETAILS[itemMode];
+          return React.createElement(
+            'button',
+            {
+              key: itemMode,
+              ref: (node) => { itemRefs.current[index] = node; },
+              type: 'button',
+              className: 'dsh-cu-mode-item',
+              role: 'menuitemradio',
+              'aria-checked': itemMode === mode,
+              tabIndex: itemMode === activeMode ? 0 : -1,
+              onClick: () => selectMode(itemMode),
+            },
+            React.createElement(ModeIcon, { key: 'icon', mode: itemMode }),
+            React.createElement('span', { key: 'label' }, details.label),
+          );
+        }),
+      ) : null;
+      const watchStop = watching ? React.createElement(
+        'button',
+        {
+          key: 'watch-stop',
+          type: 'button',
+          className: 'dsh-cu-watch-stop',
+          disabled: status.phase === 'busy',
+          onClick: stopWatch,
+        },
+        '停止盯屏',
+      ) : null;
+      const error = status.note && (switchFailed || status.phase === 'error') ? React.createElement(
+        'div', {
+          key: 'error', className: 'dsh-cu-error', role: 'alert',
+          // The menu is portaled to body, so an ancestor :has rule cannot see it.
+          // Reserve the 112px menu + 6px gap inline instead.
+          style: menuOpen ? { bottom: 'calc(100% + 118px)' } : undefined,
+        }, status.note,
+      ) : null;
+      const menuOverlay = menu ? ReactDOM.createPortal(menu, document.body) : null;
+      return React.createElement('div', { className: 'dsh-cu-root', ref: rootRef }, trigger, menuOverlay, watchStop, error);
     }
 
     /**

@@ -5,7 +5,7 @@
  * `env` 注入（由 index.js 在装配期构建的 toolEnv 提供）。
  */
 export function registerComputerClipboard(env) {
-  const { safeRegister, defineTracedTool, requireGrant, call } = env;
+  const { safeRegister, defineTracedTool, requireGrant, requireObservation = requireGrant, call } = env;
   safeRegister(defineTracedTool({
     name: 'computer_clipboard',
     description:
@@ -34,7 +34,7 @@ export function registerComputerClipboard(env) {
       },
     },
     async execute(args, exec) {
-      requireGrant(exec);
+      requireObservation(exec);
       const op = String(args.op ?? '').toLowerCase();
       if (!['get', 'set', 'clear'].includes(op)) throw new Error(`[BAD_REQUEST] computer_clipboard needs op 'get', 'set' or 'clear'; got '${args.op ?? ''}'`);
       if (op === 'set' && typeof args.text !== 'string') throw new Error("[BAD_REQUEST] computer_clipboard with op 'set' needs text.");

@@ -1,0 +1,16 @@
+node_modules/
+.vs/
+rt/**/bin/
+rt/**/obj/
+rt/test-results/
+*.user
+*.suo
+release-manifest.json
+pack-output/
+native/
+Thumbs.db
+.DS_Store
+
+# Local release and diagnostic output
+artifacts/
+dist/

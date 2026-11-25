@@ -1,0 +1,629 @@
+{
+  "schema": 1,
+  "name": "@k-launcher/dsh-vision-control",
+  "version": "3.0.1",
+  "builtAt": "2026-11-25T11:55:01.389Z",
+  "releaseBuildId": "248ca662a95ee3c6",
+  "files": [
+    {
+      "name": "backend/bridge.js",
+      "bytes": 38494,
+      "sha256": "bc0603a14b8d8cde93308988e1dd2f70894fc7072ac13f99651b976662b34083"
+    },
+    {
+      "name": "backend/parts-manifest.json",
+      "bytes": 2699,
+      "sha256": "77a36aeea75fa2e8daf057612d14f09047e008734029a46bf670cf53752db388"
+    },
+    {
+      "name": "backend/parts/00-preamble.ps1",
+      "bytes": 1442,
+      "sha256": "74948c090a36977111cf75ec1282fd74d71e6afa14604ba494385afc2ad0950d"
+    },
+    {
+      "name": "backend/parts/01-cancellation.ps1",
+      "bytes": 7490,
+      "sha256": "2c8d8af39c88c3ff2b6ac0f97988d724b5cf4024011f5eb962dea82d0b31f3c0"
+    },
+    {
+      "name": "backend/parts/02-native-code.ps1",
+      "bytes": 22523,
+      "sha256": "53c48499373d9cc47fce4bc465eb4ebfdc83b5a630c2d6146ddfc48e51c404d8"
+    },
+    {
+      "name": "backend/parts/03-com-uia-engine.ps1",
+      "bytes": 109994,
+      "sha256": "d89aa256a1f7f7754744e197e2139c1f37bad64f5631b4d2306ee0dee05d706d"
+    },
+    {
+      "name": "backend/parts/04-utilities.ps1",
+      "bytes": 1732,
+      "sha256": "7faa8956fa7941c55af9a10e577ddf642220c2787434008044f1b52ecfd9c91f"
+    },
+    {
+      "name": "backend/parts/05-input-state.ps1",
+      "bytes": 47879,
+      "sha256": "e30b9b0aab7daa3c880466aa65c7e90925dc8fda23d8ff9d3c36a5dd625223a2"
+    },
+    {
+      "name": "backend/parts/06-related-capture.ps1",
+      "bytes": 51323,
+      "sha256": "8b0178d19667e92c22af1ec91cd1198f3b80be3a69a48a8e48ec775ee260bec5"
+    },
+    {
+      "name": "backend/parts/07-frames.ps1",
+      "bytes": 133940,
+      "sha256": "a3b55d087eef002d53b3046645797b15a5f812ebfd6db5a9eeb8a2bc42b4674e"
+    },
+    {
+      "name": "backend/parts/08-element-refs.ps1",
+      "bytes": 6477,
+      "sha256": "8faac7c73983947f5bcd212d459681115e3a8dbb03775b2f1d80e98ffcfb023f"
+    },
+    {
+      "name": "backend/parts/09-what-the-model-reads.ps1",
+      "bytes": 22388,
+      "sha256": "e00e7a3e7b24c0418a2be9ae2adde61160db85df6f52da277686175d557b794e"
+    },
+    {
+      "name": "backend/parts/10-text-observation.ps1",
+      "bytes": 132200,
+      "sha256": "462fef89a78b0c557b7b5bf8bba15f44b9cb8e769fdeba560091638e439b4b08"
+    },
+    {
+      "name": "backend/parts/11-waiting.ps1",
+      "bytes": 45620,
+      "sha256": "6e393fcc19163f590d241dd00c5bb179f277ad1d3e10d21876ea6af1b1cf52dd"
+    },
+    {
+      "name": "backend/parts/12-batching.ps1",
+      "bytes": 119181,
+      "sha256": "96606311e35fdff2ff97a6e06045a1e590121f86f3dea6e141e4272f69f26b42"
+    },
+    {
+      "name": "backend/parts/13-main-loop.ps1",
+      "bytes": 30701,
+      "sha256": "02287d2ae29dbf5a1ca2730440803a56d17680721ad91322f478fcd3bb1be654"
+    },
+    {
+      "name": "backend/release-input.ps1",
+      "bytes": 7004,
+      "sha256": "6d19a43c1916b35f13ceb56b8e5818532f3af62432ab63eeca63c4da432da125"
+    },
+    {
+      "name": "backend/worker.ps1",
+      "bytes": 732890,
+      "sha256": "02806d8d7fb13f7aeb2dec5e6714af566c1fd40eb73e23d918961ebfbc133707"
+    },
+    {
+      "name": "browser/actions.mjs",
+      "bytes": 40314,
+      "sha256": "91d6e500f14971b220a34b36cc94f32625fba622f8404491507f5a9844b2c0e4"
+    },
+    {
+      "name": "browser/connection.mjs",
+      "bytes": 26387,
+      "sha256": "9964f4ba4d46fae1848c61a14e2fd8663067801772de988030e1d54081d031d8"
+    },
+    {
+      "name": "browser/state.mjs",
+      "bytes": 16477,
+      "sha256": "295e0b29a8f666205cd68caab6a3c48320aaf1d7affbd70d2b6d48bfcff8bdc2"
+    },
+    {
+      "name": "client.js",
+      "bytes": 52329,
+      "sha256": "d6302aed25f61a52e8d1e9999c1030bd52c0107734bd7c6894784b1fca46bdf1"
+    },
+    {
+      "name": "cordis.patch.yml",
+      "bytes": 2402,
+      "sha256": "a32dce1a6be3213f449540338b5c4d898a2df5b53adae405b8a57db4b5759588"
+    },
+    {
+      "name": "index.js",
+      "bytes": 139536,
+      "sha256": "02ca0e2e117f98dac6d2f6adcf4923b697d891f95639a22ff2331beb8cd7d15a"
+    },
+    {
+      "name": "internal/app-launch.js",
+      "bytes": 18117,
+      "sha256": "c26eb34ccc3e1b1e61bb173636205b6708e9a2b05f3bd4fe8836a89edd6cf9c5"
+    },
+    {
+      "name": "internal/app-launch.mjs",
+      "bytes": 12824,
+      "sha256": "bcc5b9304b4ae01bc33693f420a0703198244e75edaeb870ca04b4c3c2096d22"
+    },
+    {
+      "name": "internal/audit.mjs",
+      "bytes": 5754,
+      "sha256": "1824dc14acdc0f5fc21a7597d8aae2e684045cf212c7c7cb1f20b43be6f3e83d"
+    },
+    {
+      "name": "internal/build-check.mjs",
+      "bytes": 5561,
+      "sha256": "9780d77568c2672a639385ecb438460406067a66e16d7884c9144cad3ea87c16"
+    },
+    {
+      "name": "internal/capture.mjs",
+      "bytes": 23513,
+      "sha256": "24d94d6667e05fe52bb24acbfc5a423da7a878365084da197bec450f77b679ba"
+    },
+    {
+      "name": "internal/degraded.mjs",
+      "bytes": 3720,
+      "sha256": "26a63f2a09078d4140e3d6cb60d35236f8440ba7cd983e7325fbc7c70e48c1f2"
+    },
+    {
+      "name": "internal/doctor.mjs",
+      "bytes": 24790,
+      "sha256": "dce7f595369ae1d839fd336ef7b2d77e580fbd5ecc56ec55242e3a0133c1d57c"
+    },
+    {
+      "name": "internal/execution.mjs",
+      "bytes": 7306,
+      "sha256": "fa9cb86196e865009786946ffe0290fa9669bf1fd986e682396b482ff888a03a"
+    },
+    {
+      "name": "internal/failures.mjs",
+      "bytes": 28254,
+      "sha256": "ba6f2fbd32fde30662b6d0a5b7a91cc41fe519935f4f53291d8b281e77e09ad5"
+    },
+    {
+      "name": "internal/host-packages.mjs",
+      "bytes": 19686,
+      "sha256": "55a9c7c0c6b5731f7cdf9d01a0b7751c44aee04fc098ed294e19263961797715"
+    },
+    {
+      "name": "internal/instance-registry.mjs",
+      "bytes": 5956,
+      "sha256": "ea5a6d6e86d46147974514304052a224513d9126d0e671ecb38ee437e0b3555b"
+    },
+    {
+      "name": "internal/lease.mjs",
+      "bytes": 6398,
+      "sha256": "5aec60a71e025613935063a9bfaa627824cbaa677f5e209808efa9b3de722f79"
+    },
+    {
+      "name": "internal/mode-access.mjs",
+      "bytes": 1879,
+      "sha256": "b36d94f0a3c799a361dfb9c0a93ea7b630bcf7a4138d30e58a1dd043448e0325"
+    },
+    {
+      "name": "internal/mode-prompt.mjs",
+      "bytes": 670,
+      "sha256": "eff4751e0114b94c6ff1179f8c8ae6e3cac4e03d2b11e7e86da57dc4e1dd6c61"
+    },
+    {
+      "name": "internal/modes.mjs",
+      "bytes": 2798,
+      "sha256": "800080f9b505405a41f39657999df3f00fc9088627ee270ca0077e78fc195c46"
+    },
+    {
+      "name": "internal/powershell.mjs",
+      "bytes": 6700,
+      "sha256": "bbe9e3ca6bb5091b6e320b324e46547d1d9fa945ffdbec0195326590f0cfa944"
+    },
+    {
+      "name": "internal/preflight.mjs",
+      "bytes": 12273,
+      "sha256": "a9659d8d3d04fc553464f23704889d77de75861b5bf7af967aad22a73318fcd9"
+    },
+    {
+      "name": "internal/refs.mjs",
+      "bytes": 7531,
+      "sha256": "9f3f030d26519f784a76b2af53503ef0ad51c6ea2146400e4c4107c9548afd39"
+    },
+    {
+      "name": "internal/release-manifest.mjs",
+      "bytes": 14676,
+      "sha256": "3d267b3f5ff8a7e6e0f5691c54c7ac484f904e20c1a15bdccee47d9b54571fb0"
+    },
+    {
+      "name": "internal/schema-visibility.mjs",
+      "bytes": 16192,
+      "sha256": "7d737908e5af613e8cce62da4b2230c8717da960cbf15be5bb770be4cd562ef3"
+    },
+    {
+      "name": "internal/security-block.mjs",
+      "bytes": 2958,
+      "sha256": "acda99ca575e64ca24ebe668d463064cb5e0942c3f157dcc1b919ca45bfbe991"
+    },
+    {
+      "name": "internal/sessions.mjs",
+      "bytes": 2180,
+      "sha256": "3af0d6c1f0780b2658ca2ba4f18f1b0fdcb405b569e0cef28010dae8371c601d"
+    },
+    {
+      "name": "internal/summarize.js",
+      "bytes": 14373,
+      "sha256": "3b478b1759033b9bb3ca39466a3b1b94cf4cdb5a5f60f1fceb1310268a2fcd84"
+    },
+    {
+      "name": "internal/token-guard.mjs",
+      "bytes": 13695,
+      "sha256": "62c4bc330179833e10156ee43c21a8efaf0e3f6e66c89480954fb92bab8c9863"
+    },
+    {
+      "name": "internal/tool-contracts.mjs",
+      "bytes": 99437,
+      "sha256": "a8ee732bffcc837cc8c4d73a3f92daf93fc7e20a95cdc28a30b0369669152536"
+    },
+    {
+      "name": "LICENSE",
+      "bytes": 4715,
+      "sha256": "7090ad65b9527e1e0d08b16b1504405506170010edf53238375c299994e93566"
+    },
+    {
+      "name": "LICENSE-MIT",
+      "bytes": 1084,
+      "sha256": "a1ba5d5ed66563b6023855ceff259815062f56e1852d0ab75335ebf6f1d2e416"
+    },
+    {
+      "name": "native/win-x64/harness/Microsoft.Windows.SDK.NET.dll",
+      "bytes": 24877600,
+      "sha256": "0ec371d93798852e36461c8adddbeadce0f963a04752f0b64e54fe19c1c834a7"
+    },
+    {
+      "name": "native/win-x64/harness/Rt.Core.dll",
+      "bytes": 179200,
+      "sha256": "af024f23a89e1bfb2645bc32b955bd2056d66b8e90422c68137363e99ea5a138"
+    },
+    {
+      "name": "native/win-x64/harness/Rt.Harness.deps.json",
+      "bytes": 3646,
+      "sha256": "8b8905c5928e873712b1adaf032496fea0a2f99dfcc0a50f36bbbad6811fed1a"
+    },
+    {
+      "name": "native/win-x64/harness/Rt.Harness.dll",
+      "bytes": 66560,
+      "sha256": "ab5f6ba682150212a0314f119095161794af59a3ca9c6ef815ee9bbf4259ee9e"
+    },
+    {
+      "name": "native/win-x64/harness/Rt.Harness.exe",
+      "bytes": 151552,
+      "sha256": "c8289f4e57f1643cad80bbc3111fde2672affd7b1f3f4774547b54e121c03545"
+    },
+    {
+      "name": "native/win-x64/harness/Rt.Harness.runtimeconfig.json",
+      "bytes": 397,
+      "sha256": "ca1a6b5b185174698e0f5f9ae732ad3d2d3ed5b122ed666f35cc214283e83b7f"
+    },
+    {
+      "name": "native/win-x64/harness/Rt.Windows.dll",
+      "bytes": 103936,
+      "sha256": "dd04df8183e983eb4eba538efb18dd8b7bd6e4820b12d22a450e7c6b34817331"
+    },
+    {
+      "name": "native/win-x64/harness/SharpDX.Direct3D11.dll",
+      "bytes": 282624,
+      "sha256": "5c1c08571840fbf4b985a063ac6957130596a8883920a7174fb7c516826ddab1"
+    },
+    {
+      "name": "native/win-x64/harness/SharpDX.dll",
+      "bytes": 275968,
+      "sha256": "518d45a5aaec84cb37e83ee2cf58c503ab6a25febb8c48b53316340c967e84bd"
+    },
+    {
+      "name": "native/win-x64/harness/SharpDX.DXGI.dll",
+      "bytes": 147968,
+      "sha256": "18c4ec89bc0deecfc91bcb7ea1f29a2690e9288003c366ea02703374b4b6d732"
+    },
+    {
+      "name": "native/win-x64/harness/WinRT.Runtime.dll",
+      "bytes": 528944,
+      "sha256": "bcf3a14e8712a90837fc5c0d8c8a24696af2bd7f74e9767597ec81ededfb23db"
+    },
+    {
+      "name": "native/win-x64/synth/Microsoft.Windows.SDK.NET.dll",
+      "bytes": 24877600,
+      "sha256": "0ec371d93798852e36461c8adddbeadce0f963a04752f0b64e54fe19c1c834a7"
+    },
+    {
+      "name": "native/win-x64/synth/Rt.SynthWindow.deps.json",
+      "bytes": 1147,
+      "sha256": "3c045fbb22f8b059dc4ee47f968ffe1926be9bcbf41dea97786f2678706122e5"
+    },
+    {
+      "name": "native/win-x64/synth/Rt.SynthWindow.dll",
+      "bytes": 28160,
+      "sha256": "e5a1eb620d2ebf32357fa7587c99f1fd85fc7759776a285155aef5267c1b0763"
+    },
+    {
+      "name": "native/win-x64/synth/Rt.SynthWindow.exe",
+      "bytes": 151552,
+      "sha256": "156d3b357d362e5b167aeabb0eaf2cc6a9decd87b25cf2f2e9d0fced53941acb"
+    },
+    {
+      "name": "native/win-x64/synth/Rt.SynthWindow.runtimeconfig.json",
+      "bytes": 429,
+      "sha256": "73b37384bb001e78db2014d328750eb2990393712fd63cd00c0f41965b3dbe96"
+    },
+    {
+      "name": "native/win-x64/synth/WinRT.Runtime.dll",
+      "bytes": 528944,
+      "sha256": "bcf3a14e8712a90837fc5c0d8c8a24696af2bd7f74e9767597ec81ededfb23db"
+    },
+    {
+      "name": "native/win-x64/worker/Microsoft.Windows.SDK.NET.dll",
+      "bytes": 24877600,
+      "sha256": "0ec371d93798852e36461c8adddbeadce0f963a04752f0b64e54fe19c1c834a7"
+    },
+    {
+      "name": "native/win-x64/worker/Rt.Adapters.Rhythm.dll",
+      "bytes": 25600,
+      "sha256": "34645f95c2866c1529afb3cf7d1eee192dd9968f9df9d82236e8a93a79c743d7"
+    },
+    {
+      "name": "native/win-x64/worker/Rt.Core.dll",
+      "bytes": 179200,
+      "sha256": "af024f23a89e1bfb2645bc32b955bd2056d66b8e90422c68137363e99ea5a138"
+    },
+    {
+      "name": "native/win-x64/worker/Rt.Windows.dll",
+      "bytes": 103936,
+      "sha256": "dd04df8183e983eb4eba538efb18dd8b7bd6e4820b12d22a450e7c6b34817331"
+    },
+    {
+      "name": "native/win-x64/worker/Rt.Worker.deps.json",
+      "bytes": 4085,
+      "sha256": "8154ed695345cafabf62cc0d183d4882b2a089033043477216789f0efc49860f"
+    },
+    {
+      "name": "native/win-x64/worker/Rt.Worker.dll",
+      "bytes": 116224,
+      "sha256": "0583cf6da0b18d2d8faa53b6c8f4ee923d3f4ab5cc0ff3a251e68cadd239dac1"
+    },
+    {
+      "name": "native/win-x64/worker/Rt.Worker.exe",
+      "bytes": 151552,
+      "sha256": "798f6fb299c9933b7e71797694e56551d6f7d8c255fab6f0e49b387555b325ec"
+    },
+    {
+      "name": "native/win-x64/worker/Rt.Worker.runtimeconfig.json",
+      "bytes": 397,
+      "sha256": "ca1a6b5b185174698e0f5f9ae732ad3d2d3ed5b122ed666f35cc214283e83b7f"
+    },
+    {
+      "name": "native/win-x64/worker/SharpDX.Direct3D11.dll",
+      "bytes": 282624,
+      "sha256": "5c1c08571840fbf4b985a063ac6957130596a8883920a7174fb7c516826ddab1"
+    },
+    {
+      "name": "native/win-x64/worker/SharpDX.dll",
+      "bytes": 275968,
+      "sha256": "518d45a5aaec84cb37e83ee2cf58c503ab6a25febb8c48b53316340c967e84bd"
+    },
+    {
+      "name": "native/win-x64/worker/SharpDX.DXGI.dll",
+      "bytes": 147968,
+      "sha256": "18c4ec89bc0deecfc91bcb7ea1f29a2690e9288003c366ea02703374b4b6d732"
+    },
+    {
+      "name": "native/win-x64/worker/WinRT.Runtime.dll",
+      "bytes": 528944,
+      "sha256": "bcf3a14e8712a90837fc5c0d8c8a24696af2bd7f74e9767597ec81ededfb23db"
+    },
+    {
+      "name": "NOTICE",
+      "bytes": 948,
+      "sha256": "44fa8220ce7439a559daf97ef5dfb751794fedbd890ca32251b7f1808b791f35"
+    },
+    {
+      "name": "package.json",
+      "bytes": 2498,
+      "sha256": "f50a2fc58df657e38bc414c4a5a6810abcc0f37dccf504cf4913486a1688554a"
+    },
+    {
+      "name": "README_EN.md",
+      "bytes": 11458,
+      "sha256": "b3b8a7f08b0cb1f0312c5a5e9e2e926603c30c19b205b2f49d1ee5617598dba9"
+    },
+    {
+      "name": "README.md",
+      "bytes": 11371,
+      "sha256": "b643e5d44af3bfc296c45abed23d49ad3f5190b08fdde178e226884a8822a563"
+    },
+    {
+      "name": "REALTIME.md",
+      "bytes": 5849,
+      "sha256": "fb8039f339f6905fc56d259ff9b046c9726b2dbb78bd5c2f2047a218355d5c9f"
+    },
+    {
+      "name": "realtime/contracts.mjs",
+      "bytes": 13011,
+      "sha256": "039628c489b9ba810a9b2068f84ce122de8a81ec48a29439b576ea6f68e7ae9d"
+    },
+    {
+      "name": "realtime/controller.mjs",
+      "bytes": 22400,
+      "sha256": "cc574290d8302226a7f93782b3eab336b97cf76a34e5a6fc363617581eb9cf66"
+    },
+    {
+      "name": "realtime/hil-target-verifier.mjs",
+      "bytes": 3598,
+      "sha256": "32207813de69b4c6b7ffa4bdd65af545eb03f1cdf8a2dab9a21c64b8ed852d4f"
+    },
+    {
+      "name": "realtime/README.md",
+      "bytes": 4601,
+      "sha256": "5babadce19ff773ba78e9f2a464d11d3b1bd960b5b3430337921458485c4b19e"
+    },
+    {
+      "name": "realtime/worker-client.mjs",
+      "bytes": 17970,
+      "sha256": "9139345321f53fbf6b65b05daa4096d4b85f743cb96adb54072c056fa628942a"
+    },
+    {
+      "name": "see/apply.mjs",
+      "bytes": 19457,
+      "sha256": "6b39ffa2559eaf512e4ef62775879f128d49d3918a5374d006a12dc03df7b44c"
+    },
+    {
+      "name": "see/capture.js",
+      "bytes": 11755,
+      "sha256": "e79a70fa4d3dd0a9bf2d5693d4d72897dc8cc8ea9db48634bc0fe0944b492765"
+    },
+    {
+      "name": "see/cuts.js",
+      "bytes": 3493,
+      "sha256": "1d3bc1ec47ae22f9e18d2bdae4ed88e281673d75e905b6ccca2153eb57b7ccf2"
+    },
+    {
+      "name": "see/pack.js",
+      "bytes": 16291,
+      "sha256": "006601e64f0faa3826e7bdb6e88ff0c512b8dacce6ab90cf8ed11a40e91aad4b"
+    },
+    {
+      "name": "see/pipeline.js",
+      "bytes": 24718,
+      "sha256": "169d296f86df605a43c9d3779e2c52d2dec5174484039f3bc236a3787bdf8e38"
+    },
+    {
+      "name": "see/png.js",
+      "bytes": 5943,
+      "sha256": "5689010ebf7351164ade5d39d8f7211b53ab283ac0563670eed2929709ff1702"
+    },
+    {
+      "name": "see/runner.js",
+      "bytes": 23720,
+      "sha256": "dfea9a6de9ab39da0d4f2d24a53510cbc8a046666634b41a5c1d83e8840b8b6d"
+    },
+    {
+      "name": "see/scale.js",
+      "bytes": 2114,
+      "sha256": "5aebe93a87d130e6de7cd98b7786bc41127f177f5f2f408b988bd2d18172cbde"
+    },
+    {
+      "name": "see/sheet.js",
+      "bytes": 11352,
+      "sha256": "c455932a08403b248c9e7793b099aaeee01830452a5f765067f413decd7c0232"
+    },
+    {
+      "name": "see/tiers.js",
+      "bytes": 5216,
+      "sha256": "1375bff10221b3c13a896023b7c390e11d3ccbb07717f15f8723279bab701ca6"
+    },
+    {
+      "name": "skills/dsh-vision-control/SKILL.md",
+      "bytes": 12334,
+      "sha256": "81400591551ee825b92d9059de23ca4850a3e6ff10d450aacb4f61359d1992e4"
+    },
+    {
+      "name": "THIRD_PARTY_NOTICES.md",
+      "bytes": 1770,
+      "sha256": "7956538b18ee9f110cc04098a9347b75e3e0dacec4035da894407122116458a1"
+    },
+    {
+      "name": "tools/actions.mjs",
+      "bytes": 46746,
+      "sha256": "7647dc7180133d09f39e518b966d855d47205bd7b01d3105d50eb526a959522d"
+    },
+    {
+      "name": "tools/browser-actions.mjs",
+      "bytes": 15100,
+      "sha256": "9c39ab2bd3250f08cb34c0197d5565c1cf26885c5faea43854b1951edbde6fe4"
+    },
+    {
+      "name": "tools/browser-state.mjs",
+      "bytes": 11144,
+      "sha256": "3f7abeb34ca4290daf8a09170e58b87ece314ced559dbfc40c9577579e99bca8"
+    },
+    {
+      "name": "tools/build-native.mjs",
+      "bytes": 664,
+      "sha256": "4e1842d8747112fd8ff0f1831159c60b052d6c17ff4fae9a455695f474a7979d"
+    },
+    {
+      "name": "tools/click.mjs",
+      "bytes": 8349,
+      "sha256": "78652f022756932b743f471b9ff9bf6b9590bcb21975889a2b862e035149e7ce"
+    },
+    {
+      "name": "tools/clipboard.mjs",
+      "bytes": 2798,
+      "sha256": "e03808eb502940147513428b0d8cc330c058830d3e98020dc04777a33afabbe4"
+    },
+    {
+      "name": "tools/concat-worker.mjs",
+      "bytes": 4229,
+      "sha256": "5a5047a1bd1b0b82742f7d8e1388ed354380052abfa68bcd70d254232f9123a5"
+    },
+    {
+      "name": "tools/digest.mjs",
+      "bytes": 2721,
+      "sha256": "8b39e11573023173765333e9543c634ed63386ac521cdd7f928f81943d806a4b"
+    },
+    {
+      "name": "tools/drag.mjs",
+      "bytes": 12128,
+      "sha256": "485481c37689ace4424a3977d267ffb51623dd0d9091c1b06dbcc04d9c9dbe37"
+    },
+    {
+      "name": "tools/key.mjs",
+      "bytes": 2740,
+      "sha256": "176724d1646ffc2ac20294a1bc0149e5e4b829b2157ea41b41203386afb12999"
+    },
+    {
+      "name": "tools/launch.mjs",
+      "bytes": 9098,
+      "sha256": "9c48a72afbf75fa92de4e277d5dcbd32abf9c07d5f6817b318d355feb9cd95fc"
+    },
+    {
+      "name": "tools/native-runtime.mjs",
+      "bytes": 3261,
+      "sha256": "45790420062655a9155e0e6a720be726f58e26e69cf21e2585296920479e9979"
+    },
+    {
+      "name": "tools/pack-candidate.mjs",
+      "bytes": 7048,
+      "sha256": "63af1aaa402a61e262a10a9d37f824f82b5d910bdd7f4c49de7bc6f173cbcbbe"
+    },
+    {
+      "name": "tools/paste.mjs",
+      "bytes": 9252,
+      "sha256": "3e895fc8ef020f295e95b6da30198b9b6930baa3358d559f804d266000c52bfc"
+    },
+    {
+      "name": "tools/realtime.mjs",
+      "bytes": 29008,
+      "sha256": "dce88d7653af6f829b00e4ed393b5598d6214141d91f1d7b9c97198e4006f59c"
+    },
+    {
+      "name": "tools/screenshot.mjs",
+      "bytes": 14824,
+      "sha256": "56a80dd39319813ef2196fad8f068322babc078c34ba0192a942f825f2b20d61"
+    },
+    {
+      "name": "tools/scroll.mjs",
+      "bytes": 4734,
+      "sha256": "c67735141769018eb895c22cc35c892ead3a90580cbf6f9b49a9989ca6507e6c"
+    },
+    {
+      "name": "tools/stop.mjs",
+      "bytes": 6655,
+      "sha256": "b85ee6778e718f97d91df858d82e4db48f94d0fcedccaaec0bb6c6187488e81d"
+    },
+    {
+      "name": "tools/type.mjs",
+      "bytes": 1794,
+      "sha256": "9b3897c8b825dcadb298c4bcb7c28bddc979c3c21306c7e3b8cc079cb47b79bf"
+    },
+    {
+      "name": "tools/ui-action.mjs",
+      "bytes": 13454,
+      "sha256": "bdef1494c5230c5a81c6ba692d597d1c034c06a7d09ed9e417a6b9aea3b69672"
+    },
+    {
+      "name": "tools/ui.mjs",
+      "bytes": 22636,
+      "sha256": "7a2ffa5f02f0e40cfe199e87110fdf6f912d8c23806f43ad8e6c82aa24209b4d"
+    },
+    {
+      "name": "tools/windows.mjs",
+      "bytes": 5165,
+      "sha256": "ab306ac9b92f6071ec9c91debc59089d53c6d225962cbe530df05e6973a8b887"
+    }
+  ]
+}

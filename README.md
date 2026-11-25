@@ -4,7 +4,7 @@
 
 **实时视觉感知 + 精确桌面操控** —— 一个 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) 插件，给 AI 一双眼睛和一双手。
 
-`@k-launcher/dsh-vision-control` · v1.0.0 · Windows · PolyForm Noncommercial 1.0.0
+`@k-launcher/dsh-vision-control` · v3.0.1 · Windows · PolyForm Noncommercial 1.0.0
 
 ---
 ## 核心目的
@@ -28,6 +28,10 @@
 | 🔤 **OCR 观察** | 盯屏可选附带 Windows OCR 文本，读屏不猜字 |
 | 📜 **动作审计** | 操作落 JSONL 审计日志（默认关闭，可配置开启），脱敏处理 |
 
+## 原生低延迟运行时（本分支）
+
+`computer_watch` 仍负责模型“余光”；新的 .NET 8 Worker 将连续采集、latest-frame、可插拔场景技能、QPC 调度和安全停止放在原生快速环。构建、九个 `realtime_*` 工具、shadow/active 边界与实测限制见 [REALTIME.md](REALTIME.md)。默认 shadow；真实输入只允许通过独立验证的自建 HIL 窗口。
+
 ## 安装
 
 需要 DeepSeek Harness ≥ 0.2.1-rc.2（desktop profile，Windows）。
@@ -41,7 +45,7 @@ github:star-kz/dsh-vision-control
 或指定发布版本：
 
 ```
-github:star-kz/dsh-vision-control#v1.0.0
+github:star-kz/dsh-vision-control#v3.0.1
 ```
 
 > **依赖**：实时感知（`computer_watch`）需要系统里有 `ffmpeg`（支持 `ddagrab` 的构建）。
@@ -52,19 +56,21 @@ github:star-kz/dsh-vision-control#v1.0.0
 
 ### 0. 给 AI 装上使用教程（推荐）
 
-本插件附带一个 **skill**（[skills/dsh-vision-control/SKILL.md](skills/dsh-vision-control/SKILL.md)），是一份写给 AI 的标准使用教程：工具族速览、看→定位→动→确认工作流、参数配方、故障速查。装入后 AI 在遇到桌面任务时会自动按最佳实践调用本插件，而不是边试边错。
+插件会通过宿主的动态系统提示，按当前模式自动提供对应工作流，**不需要手动安装 skill**。附带的 [SKILL.md](skills/dsh-vision-control/SKILL.md) 是完整人工参考，也可由用户显式查阅。为避免禁用时泄露电脑能力，它标记为 `disable-model-invocation: true`，不会自动进入模型技能目录。
 
-安装方法：把 `skills/dsh-vision-control/` 整个目录复制到用户目录的 `.dsh\skills\` 下（如 `C:\Users\<你>\.dsh\skills\dsh-vision-control\`），新会话即可在技能目录中看到 `dsh-vision-control`。
+### 1. 选择三态模式（每个会话独立）
 
-### 1. 开启授权（每次会话一次）
+点击输入框工具栏的**电脑图标按钮**，再选择一项：
 
-在输入框工具栏找到**电脑图标按钮**（💻），点一下：
+| 线性 SVG 图标 | 模式 | AI 能做什么 | 模型提示与工具 |
+|---|---|---|---|
+| 禁止（显示器＋斜线） | **禁用功能** | 停止 watch/实时运行、撤销并释放输入；不能观察或操控 | 不注入电脑工具 schema、技能目录条目或电脑提示词；直接调用仍返回 `[NOT_AUTHORIZED]` |
+| 眼睛 | **仅观看** | 截图、窗口/UIA 读取、digest/watch、状态查询、shadow/replay；可停止清理 | 只注入只读工具和只读工作流；写操作与 realtime active 返回 `[CONTROL_REQUIRED]` |
+| 电脑显示器＋指针 | **观看+操作** | 完整观察、窗口/浏览器/键鼠/剪贴板操作及实时控制 | 注入完整工具和「看→定位→动→确认」工作流 |
 
-- 图标亮起 = 已授权，本会话内 AI 可以截图、看屏、动鼠标键盘、操作窗口。
-- 再点一下 = 收回授权，所有 `computer_*` 工具立即拒绝执行。
-- 鼠标悬停显示当前状态（已开启 / 已关闭 / 执行中 / 停止中…）。
+图标按钮收起后只显示当前模式的线性 SVG；点击后通过独立浮层在输入框上方**竖向展开**三项图标和文字，不撑开当前对话框。切换中会禁用菜单并等待后端权威回执；停止或释放未确认时会保留警告，不伪报成功。watch 运行时可使用其独立停止入口。
 
-授权是**会话级**的：新会话默认关闭。子代理（subagent）永远没有这项授权，只有主会话能操作电脑。
+权限是**会话级**的：新会话默认禁用。子代理（subagent）永远不能观察或操作电脑。模式隔离同时作用于 schema、动态系统提示、固定技能目录和后端执行门禁，不只是隐藏按钮。
 
 ### 2. 直接下命令
 
@@ -93,7 +99,7 @@ AI 会自己决定用哪只「眼睛」、哪只「手」：
 
 插件分三层：**授权闸门 → 操控层 → 感知层**。
 
-**授权闸门（requireGrant）**：所有 `computer_*` 工具第一行过闸门——芯片没开，一个像素都不会动；子代理一律拒绝。
+**三态授权闸门**：`disabled` 不注入任何电脑工具或提示；`watch` 只开放观察与清理，写入和 realtime active 需要 `control`；共享命令按 `movesDesktop` 判定读写。即使模型绕过 schema 直接调用，后端也会拒绝。固定 skill 标记为不可由模型自动调用，模式说明由宿主动态系统提示提供。
 
 **操控层**：16 个工具逐个安全注册（单工具失败不拖垮整插件）；执行后端是一个 PowerShell 工作进程（UIA 控件树、SendInput 键鼠合成、截图、窗口枚举），Node 端通过管道收发 JSON 指令。UIA 优先：能 `Invoke` 的控件绝不合成鼠标事件。
 
@@ -131,6 +137,22 @@ computer_watch 工具返回拼图附件
 抓屏首帧 ~370ms（ddagrab）/ 0.28 核 CPU；冷启动首图 ≤3 秒；阻塞上限 860 秒内必定返回（早于宿主 900 秒工具超时）。
 
 ## 更新日志
+
+### v3.0.1（2026-11-25）
+
+- 将当前本地 2.0.1 版本发布到 GitHub，版本号提升 1.0。
+- 包含三态权限、按模式提供的工具与提示词，以及原生低延迟运行时和构建源码。
+
+### v2.0.1（2026-11-08）
+
+- **启动修复**：在真实 Cordis `inject` 中声明 `systemPrompt`，修复宿主因 `cannot get property "systemPrompt" without inject` 而在启动阶段卸载插件的问题；新增真实宿主与安装目录回归测试。
+
+### v2.0.0（2026-11-08）
+
+- **三态模式**：禁止/眼睛/电脑线性 SVG 菜单，三项在独立浮层中竖向展开；按模式隔离 schema、动态提示、技能目录和后端权限，保留权威停止/切换状态及旧 `enabled` 请求兼容。
+- **提示词隔离**：disabled 不展示工具 schema、技能目录或电脑提示；watch/control 由动态系统上下文注入各自工作流。
+- **执行权限**：观察与操控分级，watch 拒绝键鼠、剪贴板写入、窗口聚焦、应用启动及 realtime active；直接绕过界面的调用同样被拒绝。
+- **原生实时运行时**：集成 .NET 8 Worker、九工具、shadow/replay、trace、心跳与安全停止；真实 active 仍限独立验证的专用 HIL。
 
 ### v1.1.0（2026-11-04）
 

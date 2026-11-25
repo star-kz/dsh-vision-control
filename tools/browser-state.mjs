@@ -9,7 +9,7 @@ import { BrowserSession, formatBrowserNode } from '../browser/state.mjs';
 import { sessionKey } from '../internal/sessions.mjs';
 import { BROWSER_STATE_SCHEMA } from '../internal/tool-contracts.mjs';
 export function registerBrowserState(env) {
-  const { safeRegister, defineTracedTool, execution, sessions, refs, requireGrant, BROWSER_CAPABLE, BROWSER_CAPABILITY_NOTE, resolveBrowserEndpoint, browserSessionFor } = env;
+  const { safeRegister, defineTracedTool, execution, sessions, refs, requireGrant, requireObservation = requireGrant, BROWSER_CAPABLE, BROWSER_CAPABILITY_NOTE, resolveBrowserEndpoint, browserSessionFor } = env;
   safeRegister(defineTracedTool({
       name: 'browser_state',
     description:
@@ -54,7 +54,7 @@ export function registerBrowserState(env) {
       },
     },
     async execute(args, exec) {
-      requireGrant(exec);
+      requireObservation(exec);
       const sessionKey = String(exec?.agent?.session?.id ?? '');
       const requestedView = String(args.view ?? '').toLowerCase();
       const endpoint = resolveBrowserEndpoint(sessionKey);

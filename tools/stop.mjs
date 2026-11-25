@@ -7,7 +7,7 @@
 import { join } from 'node:path';
 import { sessionKey } from '../internal/sessions.mjs';
 export function registerComputerStop(env) {
-  const { safeRegister, defineTracedTool, requireGrant, call, revokeSession, actionTimeoutMs, ctx } = env;
+  const { safeRegister, defineTracedTool, requireGrant, requireObservation = requireGrant, call, revokeSession, actionTimeoutMs, ctx } = env;
   safeRegister(defineTracedTool({
     name: 'computer_stop',
     description:
@@ -51,14 +51,18 @@ export function registerComputerStop(env) {
         return [{ type: 'text', text: lines.join('\n') }];
       },
     },
-    async execute(args, exec) {
-      requireGrant(exec);
+    async execute(args, exec, internal = {}) {
+      // 直接禁用会先同步撤销权限，再把同一个 revocation Promise 交到这里
+      // 等待；内部续接不能重新走已经被禁用的公开观察门禁。模型只能传两参数。
+      if (internal.revocation === undefined) requireObservation(exec);
       const value = { released: [], count: 0, note: 'nothing was held down' };
       if (args.disable_capability === true) {
         // Turning it off is a stop, not a flag: revoke first, then cancel what is in
         // flight, then unwind anything the worker is still holding. Reporting "off" while
         // a batch is still clicking would be the worst kind of lie about a safety control.
-        const outcome = await revokeSession(exec?.agent?.session?.id, 'the capability was turned off by computer_stop');
+        const outcome = internal.revocation !== undefined
+          ? await internal.revocation
+          : await revokeSession(exec?.agent?.session?.id, 'the capability was turned off by computer_stop');
         value.released = outcome.released;
         value.count = outcome.released.length;
         value.note = outcome.error === '' ? 'the session was revoked and the desktop was unwound' : `the session was revoked, but releasing held input failed: ${outcome.error}`;

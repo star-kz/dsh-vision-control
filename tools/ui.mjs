@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { resolveFormat, screenshotEnvelope } from '../internal/capture.mjs';
 import { UIA_STATE_SCHEMA, stateValue, renderState } from '../internal/tool-contracts.mjs';
 export function registerComputerUi(env) {
-  const { safeRegister, defineTracedTool, captureService, refs, restartBackend, requireGrant, PROFILE_COOLDOWN_MS, capabilityForHwnd, capabilityNote, call, capture, reportAttachment, markObservation, normalizeTextTarget, actionTimeoutMs, ctx, getLastLegacyRestartMs, setLastLegacyRestartMs } = env;
+  const { safeRegister, defineTracedTool, captureService, refs, restartBackend, requireGrant, requireObservation = requireGrant, PROFILE_COOLDOWN_MS, capabilityForHwnd, capabilityNote, call, capture, reportAttachment, markObservation, normalizeTextTarget, actionTimeoutMs, ctx, getLastLegacyRestartMs, setLastLegacyRestartMs } = env;
   safeRegister(defineTracedTool({
     name: 'computer_ui',
     description:
@@ -115,7 +115,7 @@ export function registerComputerUi(env) {
       },
     },
     async execute(args, exec) {
-      requireGrant(exec);
+      requireObservation(exec);
       // The one path that may decline to read: the caller said this probe is optional, and this
       // window was already found degraded or unavailable recently. It answers with that
       // conclusion (and how old it is) instead of paying for the same expensive walk again.

@@ -1,48 +1,73 @@
-/**
- * 会话登记：谁开着「电脑操作」、以及会话标识怎么归一化（9.txt §10 的"会话管理"那一块）。
- *
- * 授权是**按会话**、默认关闭的。把鼠标键盘交给模型比读文件大一步，所以它必须是一个用户为某一次
- * 对话打开、也能再关掉的东西——这正是输入框那个芯片表达的意思。授权本身存在这里（内存里，
- * DSH 重启即回到默认值，对一个能操控鼠标键盘的能力来说这个默认是刻意的）。
- *
- * 从 `index.js` 搬出来（§10 宿主半边拆分）：这块只有两个变量和三个函数，却是"每个入口最先问"
- * 的东西，独立成模块之后"谁能动桌面"这条线在一个文件里读得完。
- */
+import { MODES } from './modes.mjs';
 
-/**
- * 会话标识的归一化。
- *
- * 缺失/空值统一成 `''`（匿名会话）：匿名会话也要能被授权与记账，不能因为拿不到 id 就绕过门禁。
- * @param sessionId - 原始会话标识。
- * @returns 用于 Map 键的字符串。
- */
+/** Missing ids share the anonymous session rather than bypassing authorization. */
 export const sessionKey = (sessionId) => (sessionId === undefined || sessionId === null ? '' : String(sessionId));
 
-/**
- * 授权登记表：`sessionKey -> 显式授权`。**没有记录**表示"用部署默认值"，
- * 所以"关掉"必须显式写 `false`（见 `revoke`），而不是删掉记录。
- */
-export function createSessions({ defaultEnabled }) {
-  const grants = new Map();
+/** Per-session three-mode grants. Missing records use the deployment default. */
+export class SessionGrantStore {
+  constructor({ defaultEnabled = false } = {}) {
+    this.defaultEnabled = defaultEnabled === true;
+    this.modes = new Map();
+    this.listeners = new Set();
+    for (const method of ['getMode', 'setMode', 'canObserve', 'canControl', 'isEnabled', 'grant', 'revoke', 'hasExplicit', 'forget', 'emit', 'onChange']) {
+      this[method] = this[method].bind(this);
+    }
+  }
 
-  /**
-   * 这个会话现在能不能用。
-   * @param sessionId - 会话标识。
-   * @returns 显式授权优先，否则用部署默认值。
-   */
-  const isEnabled = (sessionId) => grants.get(sessionKey(sessionId)) ?? defaultEnabled;
+  getMode(sessionId) {
+    return this.modes.get(sessionKey(sessionId)) ?? (this.defaultEnabled ? 'control' : 'disabled');
+  }
 
-  /** 显式授权（芯片打开时）。 */
-  const grant = (sessionId) => grants.set(sessionKey(sessionId), true);
+  setMode(sessionId, mode) {
+    if (!MODES.includes(mode)) {
+      throw new RangeError(`Unknown computer-use mode: ${String(mode)}`);
+    }
+    this.modes.set(sessionKey(sessionId), mode);
+    this.emit(sessionId);
+    return mode;
+  }
 
-  /** 显式收回（芯片关闭、急停、会话被撤销时）。 */
-  const revoke = (sessionId) => grants.set(sessionKey(sessionId), false);
+  emit(sessionId) {
+    const mode = this.getMode(sessionId);
+    for (const listener of this.listeners) listener(sessionId, mode);
+  }
 
-  /** 这个会话是否有过显式授权记录（控制块要区分"关着"与"被停过"）。 */
-  const hasExplicit = (sessionId) => grants.has(sessionKey(sessionId));
+  onChange(listener) {
+    if (typeof listener !== 'function') throw new TypeError('Session change listener must be a function');
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
 
-  /** 清掉一个会话的全部登记（会话销毁时）。 */
-  const forget = (sessionId) => grants.delete(sessionKey(sessionId));
+  canObserve(sessionId) {
+    return this.getMode(sessionId) !== 'disabled';
+  }
 
-  return { isEnabled, grant, revoke, hasExplicit, forget, defaultEnabled };
+  canControl(sessionId) {
+    return this.getMode(sessionId) === 'control';
+  }
+
+  /** Legacy boolean API: enabled means full control, not watch. */
+  isEnabled(sessionId) {
+    return this.canControl(sessionId);
+  }
+
+  grant(sessionId) {
+    return this.setMode(sessionId, 'control');
+  }
+
+  revoke(sessionId) {
+    return this.setMode(sessionId, 'disabled');
+  }
+
+  hasExplicit(sessionId) {
+    return this.modes.has(sessionKey(sessionId));
+  }
+
+  forget(sessionId) {
+    return this.modes.delete(sessionKey(sessionId));
+  }
+}
+
+export function createSessions({ defaultEnabled = true } = {}) {
+  return new SessionGrantStore({ defaultEnabled });
 }

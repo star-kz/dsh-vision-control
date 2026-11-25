@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Rt.Core\Rt.Core.csproj" />
+    <ProjectReference Include="..\Rt.Windows\Rt.Windows.csproj" />
+    <ProjectReference Include="..\Rt.Adapters.Rhythm\Rt.Adapters.Rhythm.csproj" />
+  </ItemGroup>
+</Project>

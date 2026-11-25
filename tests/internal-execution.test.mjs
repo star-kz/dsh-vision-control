@@ -121,6 +121,18 @@ test('stopping 三件套', () => {
   assert.equal(reg.isStopping('s1'), false);
 });
 
+test('stopping 重叠撤销按计数结束，较早完成者不能提前清除停止状态', () => {
+  const reg = createExecutionRegistry();
+  reg.beginStop('s1');
+  reg.beginStop('s1');
+  reg.endStop('s1');
+  assert.equal(reg.isStopping('s1'), true);
+  reg.endStop('s1');
+  assert.equal(reg.isStopping('s1'), false);
+  reg.endStop('s1');
+  assert.equal(reg.isStopping('s1'), false);
+});
+
 test('runSessionCall：body 拿到 signal/deadline；在飞期间计入 count；结束注销', async () => {
   const reg = createExecutionRegistry();
   const exec = { agent: { session: { id: 's1' } } };

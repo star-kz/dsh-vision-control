@@ -4,7 +4,7 @@
 
 **Real-time visual perception + precise desktop control** — a [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) plugin that gives AI a pair of eyes and a pair of hands.
 
-`@k-launcher/dsh-vision-control` · v1.0.0 · Windows · PolyForm Noncommercial 1.0.0
+`@k-launcher/dsh-vision-control` · v3.0.1 · Windows · PolyForm Noncommercial 1.0.0
 
 ---
 ## Core Purpose
@@ -28,6 +28,10 @@
 | 🔤 **OCR observation** | Watch can attach Windows OCR text — read screens without guessing glyphs |
 | 📜 **Action audit** | Operations can append to a redacted JSONL audit log (off by default) |
 
+## Native Low-Latency Runtime (this branch)
+
+`computer_watch` remains the model’s peripheral vision; the new .NET 8 Worker owns continuous capture, latest-frame buffering, pluggable scene skills, QPC scheduling, and safe stopping in a native fast loop. See [REALTIME.md](REALTIME.md) for builds, the nine `realtime_*` tools, shadow/active boundaries, and measured limitations. Shadow is the default; real input is restricted to an independently verified, dedicated HIL window.
+
 ## Installation
 
 Requires DeepSeek Harness ≥ 0.2.1-rc.2 (desktop profile, Windows).
@@ -41,7 +45,7 @@ github:star-kz/dsh-vision-control
 Or pin a release:
 
 ```
-github:star-kz/dsh-vision-control#v1.0.0
+github:star-kz/dsh-vision-control#v3.0.1
 ```
 
 > **Dependency**: real-time perception (`computer_watch`) needs an `ffmpeg` build with `ddagrab` support on the system.
@@ -52,19 +56,19 @@ github:star-kz/dsh-vision-control#v1.0.0
 
 ### 0. Give the AI its usage tutorial (recommended)
 
-This plugin ships a **skill** ([skills/dsh-vision-control/SKILL.md](skills/dsh-vision-control/SKILL.md)) — a standard usage tutorial written for the AI: the tool family at a glance, the look → locate → act → confirm workflow, parameter recipes, and troubleshooting. With the skill installed, the AI drives this plugin by best practices instead of trial and error.
+No manual skill installation is needed. Mode-specific workflows are injected through the host's dynamic system-prompt context. The bundled [SKILL.md](skills/dsh-vision-control/SKILL.md) remains a user-invokable reference, deliberately excluded from automatic model invocation so a disabled session does not even see the computer tools or tutorial.
 
-To install: copy the whole `skills/dsh-vision-control/` directory into the `.dsh\skills\` folder under your user directory (e.g. `C:\Users\<you>\.dsh\skills\dsh-vision-control\`). New sessions will list `dsh-vision-control` in the skill catalog.
+### 1. Choose one of three modes (per session)
 
-### 1. Grant the capability (once per session)
+Click the **computer icon** in the composer toolbar, then choose:
 
-Find the **computer icon button** (💻) in the composer toolbar and click it:
+- **Disabled (forbidden linear SVG)**: stop watching/realtime runs, revoke access and release input. No computer tool schemas, skill-catalog entry, or computer prompt is injected; a direct stale call still fails with `[NOT_AUTHORIZED]`.
+- **Watch only (eye linear SVG)**: screenshots, window/UIA reads, digest/watch, status, shadow/replay and safe cleanup. Writes and realtime active fail with `[CONTROL_REQUIRED]`.
+- **Watch + control (computer linear SVG)**: the complete observation and desktop-control workflow.
 
-- Icon lit = granted. In this session the AI may screenshot, watch the screen, move mouse and keyboard, and operate windows.
-- Click again = revoked. Every `computer_*` tool refuses immediately.
-- Hovering shows the current state (on / off / running / stopping…).
+The collapsed button shows only the current linear SVG. The three choices open vertically in a portal overlay above the composer, without reflowing the conversation. Transitions wait for the authoritative backend response; incomplete stop/release remains visibly warned instead of being reported as success.
 
-The grant is **per-session**: new sessions start with it off. Subagents never hold this grant — only the main session can operate the computer.
+Permissions are **per-session**: new sessions start disabled. Subagents can neither observe nor control the desktop. Schema visibility, dynamic prompts and backend execution checks all enforce the mode independently.
 
 ### 2. Just say what you want
 
@@ -93,7 +97,7 @@ The AI picks the right "eye" and "hand" itself:
 
 Three layers: **grant gate → control layer → perception layer**.
 
-**Grant gate (requireGrant)**: every `computer_*` tool passes the gate first — with the chip off, not a single pixel moves; subagents are always refused.
+**Three-mode gates**: `disabled` hides schemas and prompts and refuses direct calls; `watch` permits observation and cleanup only; writes and realtime active require `control`. Shared commands use `movesDesktop` to distinguish reads from writes, so bypassing the UI cannot bypass authorization.
 
 **Control layer**: 16 tools registered independently (one failure never sinks the plugin); the execution backend is a PowerShell worker process (UIA control tree, SendInput key/mouse synthesis, screenshots, window enumeration) exchanging JSON with the Node host over pipes. UIA first: a control that can be `Invoke`d never gets a synthesized mouse event.
 
@@ -131,6 +135,22 @@ computer_watch returns the stitched image as an attachment
 Capture first frame ~370ms (ddagrab) / 0.28 cores; cold-start first image ≤3s; blocking calls always return within 860s (ahead of the host's 900s tool timeout).
 
 ## Changelog
+
+### v3.0.1 (2026-11-25)
+
+- Publish the current local 2.0.1 version to GitHub with a 1.0 version increase.
+- Includes three permission modes, mode-specific tools and prompts, and the native low-latency runtime with build sources.
+
+### v2.0.1 (2026-11-08)
+
+- **Startup hotfix**: declare `systemPrompt` in the real Cordis `inject` contract, fixing host startup rejection with `cannot get property "systemPrompt" without inject`; add real-host and installed-release regressions.
+
+### v2.0.0 (2026-11-08)
+
+- Three-state linear SVG menu in a vertical portal overlay, with mode-scoped schemas/prompts, authoritative transitions and legacy boolean-state compatibility.
+- Mode-aware tool schemas and dynamic prompts; disabled sessions do not receive the computer skill catalog entry.
+- Independent backend observation/control gates, including realtime active rejection in watch mode.
+- Native .NET 8 realtime runtime, bounded trace, heartbeat/deadline and safe-stop integration.
 
 ### v1.1.0 (2026-11-04)
 
